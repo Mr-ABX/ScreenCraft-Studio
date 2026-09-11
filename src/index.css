@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    /* Obsidian Canvas Void */
+    --canvas-bg: #050507;
+    
+    /* Surfaces */
+    --surface-base: #0c0c0e;
+    --surface-raised: #141417;
+    --surface-floating: #1c1c21;
+    --surface-modal: #222228;
+
+    /* Liquid Glass Materials */
+    --glass-subtle: rgba(255, 255, 255, 0.03);
+    --glass-default: rgba(255, 255, 255, 0.06);
+    --glass-hover: rgba(255, 255, 255, 0.09);
+    --glass-active: rgba(255, 255, 255, 0.14);
+
+    /* Apple Specular Rim Lighting */
+    --border-subtle: rgba(255, 255, 255, 0.07);
+    --border-default: rgba(255, 255, 255, 0.12);
+    --border-prominent: rgba(255, 255, 255, 0.22);
+    --specular-top: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+
+    /* Text */
+    --text-primary: #FFFFFF;
+    --text-secondary: #A1A1AA;
+    --text-tertiary: #71717A;
+    --text-disabled: #3F3F46;
+
+    /* Accents */
+    --accent-blue: #007AFF;
+    --accent-indigo: #6366F1;
+    --accent-purple: #AF52DE;
+    --accent-emerald: #34C759;
+    --accent-amber: #FF9F0A;
+    --accent-rose: #FF3B30;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--canvas-bg);
+    color: var(--text-primary);
+  }
+}
+
+/* Custom Apple Glass Utilities */
+.glass-panel {
+  background: rgba(18, 18, 22, 0.75);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+}
+
+.glass-pill {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.glass-button-primary {
+  background: linear-gradient(180deg, #6366F1 0%, #4F46E5 100%);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 4px 12px rgba(99, 102, 241, 0.35);
+}
+
+.glass-button-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* Apple Pro Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
