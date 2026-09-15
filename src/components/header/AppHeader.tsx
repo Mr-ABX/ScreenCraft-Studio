@@ -3,11 +3,6 @@ import {
   Video,
   Upload,
   Download,
-  Ratio,
-  SlidersHorizontal,
-  Layers,
-  Sparkles,
-  ChevronDown,
 } from 'lucide-react';
 import { useStudioStore } from '../../store/useStudioStore';
 import { TrafficLights } from '../common/TrafficLights';
@@ -21,6 +16,7 @@ export function AppHeader() {
     setAspectRatio,
     setRecordModalOpen,
     setExportModalOpen,
+    setVideoSource,
   } = useStudioStore();
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -32,6 +28,13 @@ export function AppHeader() {
       setProjectTitle(titleInput.trim());
     } else {
       setTitleInput(project.title);
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setVideoSource(file);
     }
   };
 
@@ -100,12 +103,7 @@ export function AppHeader() {
             type="file"
             accept="video/*"
             className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                console.log('Imported file:', file.name);
-              }
-            }}
+            onChange={handleFileInputChange}
           />
         </label>
 

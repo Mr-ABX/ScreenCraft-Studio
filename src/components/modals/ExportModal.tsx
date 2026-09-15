@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useStudioStore } from '../../store/useStudioStore';
+import { renderAndExportVideo } from '../../engine/videoExporter';
 import {
   Download,
   X,
@@ -12,42 +13,59 @@ import {
 } from 'lucide-react';
 
 export function ExportModal() {
-  const { isExportModalOpen, setExportModalOpen, project } = useStudioStore();
+  const { isExportModalOpen, setExportModalOpen, project, videoElement } = useStudioStore();
 
-  const [resolution, setResolution] = useState<'4k' | '1080p' | '720p'>('4k');
+  const [resolution, setResolution] = useState<'4k' | '1080p' | '720p'>('1080p');
   const [format, setFormat] = useState<'mp4' | 'prores' | 'gif'>('mp4');
-  const [fps, setFps] = useState<60 | 30>(60);
   const [isExporting, setIsExporting] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [isCompleted, setIsCompleted] = useState(false);
+  const [currentFps, setCurrentFps] = useState(0);
+  const [currentFrame, setCurrentFrame] = useState(0);
+  const [totalFrames, setTotalFrames] = useState(0);
+  const [completedBlob, setCompletedBlob] = useState<Blob | null>(null);
 
   if (!isExportModalOpen) return null;
 
-  const handleStartExport = () => {
+  const handleStartExport = async () => {
+    // If no video element is loaded yet, create a dummy one for rendering the showcase
+    let activeVideo = videoElement;
+    if (!activeVideo) {
+      activeVideo = document.createElement('video');
+      activeVideo.width = 1920;
+      activeVideo.height = 1080;
+    }
+
     setIsExporting(true);
     setProgress(0);
-    setIsCompleted(false);
+    setCompletedBlob(null);
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsExporting(false);
-          setIsCompleted(true);
-          return 100;
-        }
-        return prev + 5;
+    try {
+      const blob = await renderAndExportVideo(activeVideo, project, {
+        resolution,
+        format,
+        onProgress: (p) => {
+          setProgress(p.percentage);
+          setCurrentFps(p.fps);
+          setCurrentFrame(p.currentFrame);
+          setTotalFrames(p.totalFrames);
+        },
       });
-    }, 120);
+
+      setCompletedBlob(blob);
+      setIsExporting(false);
+    } catch (err) {
+      console.error('Export failed:', err);
+      setIsExporting(false);
+    }
   };
 
   const handleDownload = () => {
-    // Simulated instant file download
-    const blob = new Blob(['ScreenCraft Pro Output'], { type: 'video/mp4' });
-    const url = URL.createObjectURL(blob);
+    if (!completedBlob) return;
+    const url = URL.createObjectURL(completedBlob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${project.title.toLowerCase().replace(/\s+/g, '_')}_4k.mp4`;
+    const ext = completedBlob.type.includes('mp4') ? 'mp4' : 'webm';
+    a.download = `${project.title.toLowerCase().replace(/\s+/g, '_')}_${resolution}.${ext}`;
     a.click();
     URL.revokeObjectURL(url);
     setExportModalOpen(false);
@@ -94,10 +112,10 @@ export function ExportModal() {
 
             <div className="space-y-1">
               <div className="text-sm font-semibold text-white">
-                Encoding 4K Master Video...
+                Rendering {resolution.toUpperCase()} Master Video...
               </div>
               <div className="text-xs font-mono text-indigo-300">
-                WebCodecs Hardware Render @ 124.8 FPS
+                Hardware Encoding @ {currentFps || 60} FPS
               </div>
             </div>
 
@@ -110,11 +128,11 @@ export function ExportModal() {
             </div>
 
             <div className="flex justify-between text-[11px] font-mono text-zinc-500">
-              <span>Frame 3,240 / 5,070</span>
+              <span>Frame {currentFrame} / {totalFrames || '...'}</span>
               <span>{progress}%</span>
             </div>
           </div>
-        ) : isCompleted ? (
+        ) : completedBlob ? (
           <div className="space-y-4 py-4 text-center">
             <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/30">
               <CheckCircle2 className="w-6 h-6 text-emerald-400" />
@@ -122,20 +140,20 @@ export function ExportModal() {
 
             <div className="space-y-1">
               <div className="text-sm font-bold text-white">
-                Export Complete!
+                Render Complete!
               </div>
               <p className="text-xs text-zinc-400">
-                Render finished in 14.8 seconds (2.4x real-time speed)
+                {(completedBlob.size / (1024 * 1024)).toFixed(2)} MB • Ready to download
               </p>
             </div>
 
             <button
               type="button"
               onClick={handleDownload}
-              className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs border border-white/20 shadow-lg shadow-emerald-600/40 flex items-center justify-center gap-2 transition-all cursor-pointer"
+              className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs border border-white/20 shadow-lg shadow-emerald-600/40 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
             >
               <Download className="w-4 h-4" />
-              <span>Save Video File</span>
+              <span>Download Video File</span>
             </button>
           </div>
         ) : (
@@ -200,7 +218,7 @@ export function ExportModal() {
             <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center gap-2.5 text-[11px] text-zinc-400">
               <Cpu className="w-4 h-4 text-indigo-400 flex-shrink-0" />
               <span>
-                Using <strong>Apple VideoToolbox / WebCodecs GPU</strong> hardware acceleration.
+                Using <strong>Hardware GPU</strong> acceleration (Baking background, 3D tilt, zoom, and cursor).
               </span>
             </div>
 

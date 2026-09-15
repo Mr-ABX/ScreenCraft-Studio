@@ -1,4 +1,5 @@
 import { Mic } from 'lucide-react';
+import { useStudioStore } from '../../store/useStudioStore';
 
 interface AudioTrackProps {
   pixelsPerSecond: number;
@@ -6,6 +7,7 @@ interface AudioTrackProps {
 }
 
 export function AudioTrack({ pixelsPerSecond, duration }: AudioTrackProps) {
+  const { audioPeaks } = useStudioStore();
   const width = duration * pixelsPerSecond;
   const numBars = Math.floor(width / 4);
 
@@ -15,16 +17,23 @@ export function AudioTrack({ pixelsPerSecond, duration }: AudioTrackProps) {
       className="relative h-10 rounded-xl bg-white/[0.02] border border-white/[0.05] flex items-center px-2 overflow-hidden select-none"
     >
       {/* Waveform Bars */}
-      <div className="absolute inset-0 flex items-center gap-[2px] px-2 opacity-60">
+      <div className="absolute inset-0 flex items-center gap-[2px] px-2 opacity-70">
         {Array.from({ length: numBars }).map((_, i) => {
-          // Generate a pseudo-random voice waveform pattern
-          const seed = Math.sin(i * 0.3) * Math.cos(i * 0.7);
-          const heightPercent = Math.max(15, Math.abs(seed) * 85);
+          let heightPercent = 25;
+
+          if (audioPeaks.length > 0) {
+            const peakIndex = Math.floor((i / numBars) * audioPeaks.length);
+            const peak = audioPeaks[peakIndex] || 0.2;
+            heightPercent = Math.max(12, Math.min(95, peak * 90));
+          } else {
+            const seed = Math.sin(i * 0.3) * Math.cos(i * 0.7);
+            heightPercent = Math.max(15, Math.abs(seed) * 85);
+          }
 
           return (
             <div
               key={i}
-              className="w-[2px] rounded-full bg-indigo-400/70"
+              className="w-[2px] rounded-full bg-indigo-400/80 transition-all"
               style={{ height: `${heightPercent}%` }}
             />
           );

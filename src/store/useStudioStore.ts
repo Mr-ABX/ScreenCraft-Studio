@@ -8,6 +8,7 @@ import {
   BackgroundType,
   CursorStyle,
 } from '../types/project';
+import { extractAudioWaveformPeaks } from '../engine/audioWaveform';
 
 interface StudioState {
   // Active Project State
@@ -15,11 +16,19 @@ interface StudioState {
   activeTab: ActiveToolTab;
   setActiveTab: (tab: ActiveToolTab) => void;
 
+  // Real Ingested Media State
+  videoSourceBlob: Blob | null;
+  videoSourceUrl: string | null;
+  videoElement: HTMLVideoElement | null;
+  audioPeaks: number[];
+  setVideoElement: (el: HTMLVideoElement | null) => void;
+  setVideoSource: (file: File | Blob) => Promise<void>;
+
   // Playback State
   isPlaying: boolean;
   currentTime: number;
   playbackRate: number;
-  viewportScale: number; // 0.5 to 2.0 (fit, 100%, etc.)
+  viewportScale: number;
   selectedZoomClipId: string | null;
 
   // Modals
@@ -52,6 +61,7 @@ interface StudioState {
   setAutoZoomEnabled: (enabled: boolean) => void;
   setDefaultZoomFactor: (factor: number) => void;
   setSpringPhysics: (stiffness: number, damping: number) => void;
+  setZoomClipFocus: (id: string, x: number, y: number) => void;
 
   // Cursor Modifiers
   setCursorStyle: (style: CursorStyle) => void;
@@ -79,7 +89,7 @@ const DEFAULT_PROJECT: StudioProject = {
   title: 'SaaS Launch Demo',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
-  durationSeconds: 84.5,
+  durationSeconds: 32.0,
   canvas: {
     aspectRatio: '16:9',
     width: 3840,
@@ -150,24 +160,17 @@ const DEFAULT_PROJECT: StudioProject = {
   zoomClips: [
     {
       id: 'zoom_01',
-      startTime: 4.0,
-      endTime: 14.5,
+      startTime: 3.0,
+      endTime: 10.5,
       zoomFactor: 2.0,
-      focusTarget: { x: 0.68, y: 0.38 },
+      focusTarget: { x: 0.65, y: 0.40 },
     },
     {
       id: 'zoom_02',
-      startTime: 22.0,
-      endTime: 36.0,
+      startTime: 14.0,
+      endTime: 24.0,
       zoomFactor: 2.4,
-      focusTarget: { x: 0.32, y: 0.58 },
-    },
-    {
-      id: 'zoom_03',
-      startTime: 48.0,
-      endTime: 62.0,
-      zoomFactor: 1.8,
-      focusTarget: { x: 0.50, y: 0.50 },
+      focusTarget: { x: 0.35, y: 0.55 },
     },
   ],
   videoClips: [
@@ -176,7 +179,7 @@ const DEFAULT_PROJECT: StudioProject = {
       sourceFile: 'sample_recording.mp4',
       timelineStart: 0.0,
       sourceStart: 0.0,
-      duration: 84.5,
+      duration: 32.0,
       playbackRate: 1.0,
     },
   ],
@@ -216,13 +219,80 @@ const DEFAULT_PROJECT: StudioProject = {
   },
 };
 
-export const useStudioStore = create<StudioState>((set) => ({
+export const useStudioStore = create<StudioState>((set, get) => ({
   project: DEFAULT_PROJECT,
   activeTab: 'canvas' as any,
   setActiveTab: (tab) => set({ activeTab: tab }),
 
+  videoSourceBlob: null,
+  videoSourceUrl: null,
+  videoElement: null,
+  audioPeaks: [],
+  setVideoElement: (el) => set({ videoElement: el }),
+
+  setVideoSource: async (file: File | Blob) => {
+    const url = URL.createObjectURL(file);
+    const filename = (file as File).name || 'recorded_screen.webm';
+
+    // Temporary video to determine duration & dimensions
+    const tempVideo = document.createElement('video');
+    tempVideo.src = url;
+    tempVideo.preload = 'metadata';
+
+    await new Promise<void>((resolve) => {
+      tempVideo.onloadedmetadata = () => resolve();
+      tempVideo.onerror = () => resolve();
+    });
+
+    const duration = tempVideo.duration && !isNaN(tempVideo.duration) && tempVideo.duration !== Infinity
+      ? tempVideo.duration
+      : 30.0;
+
+    // Extract real audio waveform
+    const peaks = await extractAudioWaveformPeaks(file, 200);
+
+    set((state) => ({
+      videoSourceBlob: file,
+      videoSourceUrl: url,
+      audioPeaks: peaks,
+      currentTime: 0,
+      isPlaying: false,
+      project: {
+        ...state.project,
+        title: filename.replace(/\.[^/.]+$/, ''),
+        durationSeconds: duration,
+        videoClips: [
+          {
+            id: `video_${Date.now()}`,
+            sourceFile: filename,
+            timelineStart: 0,
+            sourceStart: 0,
+            duration: duration,
+            playbackRate: 1.0,
+          },
+        ],
+        zoomClips: [
+          {
+            id: 'zoom_auto_01',
+            startTime: Math.min(2.0, duration * 0.1),
+            endTime: Math.min(duration * 0.45, 10.0),
+            zoomFactor: 2.0,
+            focusTarget: { x: 0.6, y: 0.4 },
+          },
+          {
+            id: 'zoom_auto_02',
+            startTime: Math.min(duration * 0.55, 15.0),
+            endTime: Math.min(duration * 0.85, 25.0),
+            zoomFactor: 2.4,
+            focusTarget: { x: 0.4, y: 0.6 },
+          },
+        ],
+      },
+    }));
+  },
+
   isPlaying: false,
-  currentTime: 12.4,
+  currentTime: 0,
   playbackRate: 1.0,
   viewportScale: 1.0,
   selectedZoomClipId: 'zoom_01',
@@ -232,10 +302,48 @@ export const useStudioStore = create<StudioState>((set) => ({
   setRecordModalOpen: (open) => set({ isRecordModalOpen: open }),
   setExportModalOpen: (open) => set({ isExportModalOpen: open }),
 
-  togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
-  setIsPlaying: (playing) => set({ isPlaying: playing }),
-  seek: (time) => set({ currentTime: Math.max(0, Math.min(time, DEFAULT_PROJECT.durationSeconds)) }),
-  setPlaybackRate: (rate) => set({ playbackRate: rate }),
+  togglePlay: () => {
+    const isPlaying = !get().isPlaying;
+    const { videoElement, currentTime, project } = get();
+
+    if (videoElement) {
+      if (isPlaying) {
+        if (currentTime >= project.durationSeconds) {
+          videoElement.currentTime = 0;
+          set({ currentTime: 0 });
+        }
+        videoElement.play().catch(() => {});
+      } else {
+        videoElement.pause();
+      }
+    }
+    set({ isPlaying });
+  },
+
+  setIsPlaying: (playing) => {
+    const { videoElement } = get();
+    if (videoElement) {
+      if (playing) videoElement.play().catch(() => {});
+      else videoElement.pause();
+    }
+    set({ isPlaying: playing });
+  },
+
+  seek: (time) => {
+    const boundedTime = Math.max(0, Math.min(time, get().project.durationSeconds));
+    const { videoElement } = get();
+    if (videoElement) {
+      videoElement.currentTime = boundedTime;
+    }
+    set({ currentTime: boundedTime });
+  },
+
+  setPlaybackRate: (rate) => {
+    const { videoElement } = get();
+    if (videoElement) videoElement.playbackRate = rate;
+    set({ playbackRate: rate });
+  },
+
   setViewportScale: (scale) => set({ viewportScale: scale }),
   setSelectedZoomClipId: (id) => set({ selectedZoomClipId: id }),
 
@@ -368,6 +476,16 @@ export const useStudioStore = create<StudioState>((set) => ({
             damping,
           },
         },
+      },
+    })),
+
+  setZoomClipFocus: (id, x, y) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        zoomClips: state.project.zoomClips.map((c) =>
+          c.id === id ? { ...c, focusTarget: { x, y } } : c
+        ),
       },
     })),
 
