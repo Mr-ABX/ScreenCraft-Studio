@@ -62,6 +62,24 @@ export function CanvasViewport() {
     cameraEngineRef.current.updateConfig(camera.springPhysics);
   }, [camera.springPhysics]);
 
+  // Synchronize native video element play/pause state
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isPlaying) {
+      if (video.paused) {
+        video.play().catch((err) => {
+          console.warn('Playback error:', err);
+        });
+      }
+    } else {
+      if (!video.paused) {
+        video.pause();
+      }
+    }
+  }, [isPlaying]);
+
   // 60FPS Master Playback Clock & Spring Physics Loop
   useEffect(() => {
     let animId: number;
@@ -152,6 +170,36 @@ export function CanvasViewport() {
   // Compute camera pan offset based on spring state
   const panOffsetX = (0.5 - springTransform.focusX) * (springTransform.zoom - 1) * 100;
   const panOffsetY = (0.5 - springTransform.focusY) * (springTransform.zoom - 1) * 100;
+
+  // Resolve Cursor Position from Telemetry or Spring Targets
+  let cursorPosition = {
+    x: springTransform.focusX,
+    y: springTransform.focusY,
+  };
+  let isCursorClicking = isDemoMode ? currentTime % 3 > 2.6 : false;
+
+  if (project.mouseTelemetry && project.mouseTelemetry.length > 0) {
+    const samples = project.mouseTelemetry;
+    const idx = samples.findIndex((s) => s.timestamp >= currentTime);
+    if (idx === -1) {
+      const last = samples[samples.length - 1];
+      cursorPosition = { x: last.x, y: last.y };
+      isCursorClicking = last.isClick;
+    } else if (idx === 0) {
+      cursorPosition = { x: samples[0].x, y: samples[0].y };
+      isCursorClicking = samples[0].isClick;
+    } else {
+      const prev = samples[idx - 1];
+      const next = samples[idx];
+      const span = next.timestamp - prev.timestamp;
+      const progress = span > 0 ? (currentTime - prev.timestamp) / span : 0;
+      cursorPosition = {
+        x: prev.x + (next.x - prev.x) * progress,
+        y: prev.y + (next.y - prev.y) * progress,
+      };
+      isCursorClicking = prev.isClick || next.isClick;
+    }
+  }
 
   // Active subtitle
   const activeSubtitle = subtitles.enabled
@@ -275,6 +323,7 @@ export function CanvasViewport() {
                       ref={videoRef}
                       src={videoSourceUrl}
                       playsInline
+                      onEnded={() => useStudioStore.getState().setIsPlaying(false)}
                       className="w-full h-full object-cover pointer-events-none"
                     />
                   ) : (
@@ -323,14 +372,13 @@ export function CanvasViewport() {
                   </div>
 
                   {/* Vector Cursor Overlay */}
-                  <VectorCursor
-                    config={cursor}
-                    position={{
-                      x: springTransform.focusX,
-                      y: springTransform.focusY,
-                    }}
-                    isClicking={currentTime % 2 > 1.6}
-                  />
+                  {cursor.showOverlay && (
+                    <VectorCursor
+                      config={cursor}
+                      position={cursorPosition}
+                      isClicking={isCursorClicking}
+                    />
+                  )}
                 </div>
               </WindowChrome>
             </motion.div>

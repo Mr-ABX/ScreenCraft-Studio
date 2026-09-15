@@ -63,6 +63,7 @@ export interface CameraConfig {
 }
 
 export interface CursorConfig {
+  showOverlay: boolean; // True to render vector cursor (on for telemetry/demo, off for baked video)
   style: CursorStyle;
   scale: number; // 1.0 to 2.5
   smoothingEnabled: boolean;
@@ -128,6 +129,13 @@ export interface SubtitlesConfig {
   position: 'bottom_center' | 'top_center' | 'floating_cursor';
 }
 
+export interface MouseTelemetrySample {
+  timestamp: number; // in seconds from recording start
+  x: number; // normalized [0, 1]
+  y: number; // normalized [0, 1]
+  isClick: boolean;
+}
+
 export interface StudioProject {
   id: string;
   title: string;
@@ -142,4 +150,5 @@ export interface StudioProject {
   videoClips: VideoClip[];
   subtitleClips: SubtitleClip[];
   audioConfig: AudioTrackConfig;
+  mouseTelemetry?: MouseTelemetrySample[];
 }

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 export function RecordModal() {
-  const { isRecordModalOpen, setRecordModalOpen, setVideoSource } = useStudioStore();
+  const { isRecordModalOpen, setRecordModalOpen, setRecordedVideoSource } = useStudioStore();
 
   const [captureSource, setCaptureSource] = useState<'screen' | 'window'>('screen');
   const [webcamEnabled, setWebcamEnabled] = useState(false);
@@ -68,7 +68,7 @@ export function RecordModal() {
 
     try {
       const result = await recorderRef.current.stopRecording();
-      await setVideoSource(result.blob);
+      await setRecordedVideoSource(result.blob, result.mouseTelemetry);
       setRecordModalOpen(false);
     } catch (err) {
       console.error('Failed to finish recording:', err);

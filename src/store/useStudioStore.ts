@@ -12,6 +12,9 @@ import { extractAudioWaveformPeaks } from '../engine/audioWaveform';
 import { DEMO_PROJECT } from '../engine/demoProject';
 import { generateSmartAutoZooms } from '../engine/autoZoomGenerator';
 
+import { generateVideoThumbnails } from '../engine/videoThumbnails';
+import { MouseTelemetrySample } from '../types/project';
+
 interface StudioState {
   // Active Project State
   project: StudioProject;
@@ -24,8 +27,10 @@ interface StudioState {
   videoSourceUrl: string | null;
   videoElement: HTMLVideoElement | null;
   audioPeaks: number[];
+  videoThumbnails: string[];
   setVideoElement: (el: HTMLVideoElement | null) => void;
   setVideoSource: (file: File | Blob) => Promise<void>;
+  setRecordedVideoSource: (file: Blob, telemetry?: MouseTelemetrySample[]) => Promise<void>;
   loadDemoProject: () => void;
   clearProject: () => void;
 
@@ -73,6 +78,7 @@ interface StudioState {
   setZoomClipFocus: (id: string, x: number, y: number) => void;
 
   // Cursor Modifiers
+  setCursorShowOverlay: (enabled: boolean) => void;
   setCursorStyle: (style: CursorStyle) => void;
   setCursorScale: (scale: number) => void;
   setClickEffectEnabled: (enabled: boolean) => void;
@@ -141,6 +147,7 @@ const EMPTY_PROJECT: StudioProject = {
     },
   },
   cursor: {
+    showOverlay: false,
     style: 'macos_arrow',
     scale: 1.4,
     smoothingEnabled: true,
@@ -186,6 +193,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   videoSourceUrl: null,
   videoElement: null,
   audioPeaks: [],
+  videoThumbnails: [],
   setVideoElement: (el) => set({ videoElement: el }),
 
   loadDemoProject: () => {
@@ -200,6 +208,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       isDemoMode: true,
       videoSourceUrl: null,
       videoSourceBlob: null,
+      videoThumbnails: [],
       audioPeaks: peaks,
       currentTime: 0,
       isPlaying: false,
@@ -213,6 +222,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       isDemoMode: false,
       videoSourceUrl: null,
       videoSourceBlob: null,
+      videoThumbnails: [],
       audioPeaks: [],
       currentTime: 0,
       isPlaying: false,
@@ -222,7 +232,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   setVideoSource: async (file: File | Blob) => {
     const url = URL.createObjectURL(file);
-    const filename = (file as File).name || 'recorded_screen.webm';
+    const filename = (file as File).name || 'uploaded_video.mp4';
 
     // Temporary video to determine duration
     const tempVideo = document.createElement('video');
@@ -238,17 +248,18 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       ? tempVideo.duration
       : 30.0;
 
-    // Extract real audio waveform
-    const peaks = await extractAudioWaveformPeaks(file, 200);
-
-    // Automatically generate initial smart auto-zooms
-    const smartZooms = generateSmartAutoZooms({ durationSeconds: duration });
+    // Extract real audio waveform and timeline filmstrip thumbnails in parallel
+    const [peaks, thumbnails] = await Promise.all([
+      extractAudioWaveformPeaks(file, 200),
+      generateVideoThumbnails(file, duration, { count: 16 }),
+    ]);
 
     set((state) => ({
       isDemoMode: false,
       videoSourceBlob: file,
       videoSourceUrl: url,
       audioPeaks: peaks,
+      videoThumbnails: thumbnails,
       currentTime: 0,
       isPlaying: false,
       project: {
@@ -265,7 +276,65 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             playbackRate: 1.0,
           },
         ],
-        zoomClips: smartZooms,
+        zoomClips: [], // Keep empty by default for user control
+        cursor: {
+          ...state.project.cursor,
+          showOverlay: false, // Default off for imported videos (baked cursor)
+        },
+      },
+    }));
+  },
+
+  setRecordedVideoSource: async (file: Blob, telemetry?: MouseTelemetrySample[]) => {
+    const url = URL.createObjectURL(file);
+    const filename = 'screen_recording.webm';
+
+    const tempVideo = document.createElement('video');
+    tempVideo.src = url;
+    tempVideo.preload = 'metadata';
+
+    await new Promise<void>((resolve) => {
+      tempVideo.onloadedmetadata = () => resolve();
+      tempVideo.onerror = () => resolve();
+    });
+
+    const duration = tempVideo.duration && !isNaN(tempVideo.duration) && tempVideo.duration !== Infinity
+      ? tempVideo.duration
+      : 30.0;
+
+    const [peaks, thumbnails] = await Promise.all([
+      extractAudioWaveformPeaks(file, 200),
+      generateVideoThumbnails(file, duration, { count: 16 }),
+    ]);
+
+    set((state) => ({
+      isDemoMode: false,
+      videoSourceBlob: file,
+      videoSourceUrl: url,
+      audioPeaks: peaks,
+      videoThumbnails: thumbnails,
+      currentTime: 0,
+      isPlaying: false,
+      project: {
+        ...state.project,
+        title: filename.replace(/\.[^/.]+$/, ''),
+        durationSeconds: duration,
+        mouseTelemetry: telemetry,
+        videoClips: [
+          {
+            id: `video_${Date.now()}`,
+            sourceFile: filename,
+            timelineStart: 0,
+            sourceStart: 0,
+            duration: duration,
+            playbackRate: 1.0,
+          },
+        ],
+        zoomClips: [],
+        cursor: {
+          ...state.project.cursor,
+          showOverlay: true, // Enable vector cursor overlay since telemetry is captured
+        },
       },
     }));
   },
@@ -277,6 +346,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const smartZooms = generateSmartAutoZooms({
       durationSeconds: project.durationSeconds,
       zoomIntensity: 'standard',
+      telemetry: project.mouseTelemetry,
+      defaultZoomFactor: project.camera.defaultZoomFactor,
     });
 
     set((state) => ({
@@ -346,17 +417,25 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const { isPlaying, currentTime, playbackRate, project, videoElement } = get();
     if (!isPlaying || project.durationSeconds <= 0) return;
 
+    // If native video element exists, it is the master clock. Do not advance synthetically.
+    if (videoElement) {
+      const vidTime = videoElement.currentTime;
+      if (vidTime >= project.durationSeconds || videoElement.ended) {
+        set({ currentTime: project.durationSeconds, isPlaying: false });
+        videoElement.pause();
+      } else {
+        set({ currentTime: vidTime });
+      }
+      return;
+    }
+
+    // Fallback clock for demo showcase (no real video element)
     const nextTime = currentTime + dt * playbackRate;
 
     if (nextTime >= project.durationSeconds) {
       set({ currentTime: project.durationSeconds, isPlaying: false });
-      if (videoElement) videoElement.pause();
     } else {
       set({ currentTime: nextTime });
-      // Maintain sync with video element
-      if (videoElement && Math.abs(videoElement.currentTime - nextTime) > 0.12) {
-        videoElement.currentTime = nextTime;
-      }
     }
   },
 
@@ -508,6 +587,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         zoomClips: state.project.zoomClips.map((c) =>
           c.id === id ? { ...c, focusTarget: { x, y } } : c
         ),
+      },
+    })),
+
+  setCursorShowOverlay: (showOverlay) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        cursor: { ...state.project.cursor, showOverlay },
       },
     })),
 

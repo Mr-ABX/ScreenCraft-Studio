@@ -51,6 +51,7 @@ export const DEMO_PROJECT: StudioProject = {
     },
   },
   cursor: {
+    showOverlay: true,
     style: 'macos_arrow',
     scale: 1.4,
     smoothingEnabled: true,
@@ -137,4 +138,15 @@ export const DEMO_PROJECT: StudioProject = {
     noiseGateEnabled: true,
     autoDuckingEnabled: true,
   },
+  mouseTelemetry: [
+    { timestamp: 0.0, x: 0.50, y: 0.50, isClick: false },
+    { timestamp: 2.5, x: 0.65, y: 0.40, isClick: true },
+    { timestamp: 6.0, x: 0.68, y: 0.42, isClick: false },
+    { timestamp: 10.0, x: 0.50, y: 0.50, isClick: false },
+    { timestamp: 13.5, x: 0.32, y: 0.55, isClick: true },
+    { timestamp: 18.0, x: 0.35, y: 0.52, isClick: false },
+    { timestamp: 23.0, x: 0.50, y: 0.50, isClick: false },
+    { timestamp: 27.0, x: 0.75, y: 0.70, isClick: true },
+    { timestamp: 30.0, x: 0.50, y: 0.50, isClick: false },
+  ],
 };

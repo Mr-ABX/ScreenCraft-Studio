@@ -68,16 +68,41 @@ export function CameraCard() {
             <span>Auto-Zoom Engine</span>
           </label>
 
-          {/* 1-Click Smart Auto-Zoom Button */}
-          <button
-            type="button"
-            onClick={suggestSmartAutoZooms}
-            title="Automatically generate intelligent zoom keyframes for the entire timeline"
-            className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 transition-colors cursor-pointer"
-          >
-            <Wand2 className="w-3 h-3 text-indigo-300" />
-            <span>Magic Auto-Zoom</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            {/* Add Zoom at Playhead */}
+            <button
+              type="button"
+              onClick={() => {
+                const { currentTime, project, addZoomClip } = useStudioStore.getState();
+                if (project.durationSeconds <= 0) return;
+                addZoomClip({
+                  startTime: Math.round(currentTime * 10) / 10,
+                  endTime: Math.min(project.durationSeconds, Math.round((currentTime + 4.0) * 10) / 10),
+                  zoomFactor: project.camera.defaultZoomFactor,
+                  focusTarget: { x: 0.5, y: 0.5 },
+                });
+              }}
+              title="Add custom zoom block at current playhead position"
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold bg-white/[0.06] hover:bg-white/[0.12] text-zinc-300 border border-white/10 transition-colors cursor-pointer"
+            >
+              <span>+ Add at Playhead</span>
+            </button>
+
+            {/* 1-Click Smart Auto-Zoom Button */}
+            <button
+              type="button"
+              onClick={suggestSmartAutoZooms}
+              title={
+                project.mouseTelemetry && project.mouseTelemetry.length > 0
+                  ? 'Generate zoom keyframes centered on real recorded clicks'
+                  : 'Automatically generate intelligent zoom keyframes across the timeline'
+              }
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 transition-colors cursor-pointer"
+            >
+              <Wand2 className="w-3 h-3 text-indigo-300" />
+              <span>{project.mouseTelemetry?.length ? 'Click Auto-Zoom' : 'Magic Zoom'}</span>
+            </button>
+          </div>
         </div>
 
         <ToggleSwitch
