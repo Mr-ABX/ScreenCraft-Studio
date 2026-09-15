@@ -5,18 +5,29 @@ import { WindowChrome } from './WindowChrome';
 import { VectorCursor } from './VectorCursor';
 import { PlaybackHUD } from './PlaybackHUD';
 import { SpringCameraEngine } from '../../engine/springPhysics';
-import { Sparkles, Code2, ArrowRight, Upload, Video, Crosshair } from 'lucide-react';
+import {
+  Sparkles,
+  Upload,
+  Video,
+  Crosshair,
+  Play,
+  Film,
+  Monitor,
+} from 'lucide-react';
 
 export function CanvasViewport() {
   const {
     project,
     currentTime,
     isPlaying,
-    seek,
+    advanceClock,
     viewportScale,
     videoSourceUrl,
+    isDemoMode,
     setVideoElement,
     setVideoSource,
+    loadDemoProject,
+    setRecordModalOpen,
     selectedZoomClipId,
     setZoomClipFocus,
   } = useStudioStore();
@@ -26,7 +37,7 @@ export function CanvasViewport() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Real-time Spring Camera State
+  // Spring camera engine instance
   const cameraEngineRef = useRef<SpringCameraEngine>(
     new SpringCameraEngine(camera.springPhysics)
   );
@@ -37,19 +48,21 @@ export function CanvasViewport() {
     focusY: 0.5,
   });
 
-  // Keep videoRef registered in store for Play/Pause and Exporter
+  // Register video element ref in store
   useEffect(() => {
     if (videoRef.current) {
       setVideoElement(videoRef.current);
+    } else {
+      setVideoElement(null);
     }
-  }, [setVideoElement]);
+  }, [videoSourceUrl, setVideoElement]);
 
-  // Update spring config when project settings change
+  // Update spring configuration
   useEffect(() => {
     cameraEngineRef.current.updateConfig(camera.springPhysics);
   }, [camera.springPhysics]);
 
-  // Real-Time 60FPS Physics Tick Loop
+  // 60FPS Master Playback Clock & Spring Physics Loop
   useEffect(() => {
     let animId: number;
     let lastTime = performance.now();
@@ -58,7 +71,12 @@ export function CanvasViewport() {
       const dt = Math.min((now - lastTime) / 1000, 0.05); // cap at 50ms
       lastTime = now;
 
-      // Find active zoom clip at current playback time
+      // 1. Advance Master Timeline Clock when playing
+      if (isPlaying) {
+        advanceClock(dt);
+      }
+
+      // 2. Evaluate Spring Physics Camera Position at currentTime
       const activeZoom = zoomClips.find(
         (z) => currentTime >= z.startTime && currentTime <= z.endTime
       );
@@ -81,14 +99,7 @@ export function CanvasViewport() {
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, [currentTime, zoomClips, camera.autoZoomEnabled]);
-
-  // Synchronize HTML5 video time updates with studio store
-  const handleTimeUpdate = () => {
-    if (videoRef.current && isPlaying) {
-      seek(videoRef.current.currentTime);
-    }
-  };
+  }, [isPlaying, currentTime, zoomClips, camera.autoZoomEnabled, advanceClock]);
 
   // Interactive Click to Reposition Camera Focus Target
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -96,13 +107,16 @@ export function CanvasViewport() {
     const clickX = (e.clientX - rect.left) / rect.width;
     const clickY = (e.clientY - rect.top) / rect.height;
 
-    // If an active or selected zoom clip is present, update its focus target
     const targetClip =
       zoomClips.find((z) => currentTime >= z.startTime && currentTime <= z.endTime) ||
       zoomClips.find((z) => z.id === selectedZoomClipId);
 
     if (targetClip) {
-      setZoomClipFocus(targetClip.id, Math.max(0.1, Math.min(0.9, clickX)), Math.max(0.1, Math.min(0.9, clickY)));
+      setZoomClipFocus(
+        targetClip.id,
+        Math.max(0.1, Math.min(0.9, clickX)),
+        Math.max(0.1, Math.min(0.9, clickY))
+      );
     }
   };
 
@@ -115,7 +129,7 @@ export function CanvasViewport() {
     }
   };
 
-  // Aspect ratio styling
+  // Aspect ratio styling for the outer canvas
   const aspectClassMap = {
     '16:9': 'aspect-video max-w-4xl',
     '9:16': 'aspect-[9/16] max-h-[85vh] max-w-sm',
@@ -146,28 +160,18 @@ export function CanvasViewport() {
       )
     : null;
 
+  const isProjectEmpty = project.durationSeconds <= 0 && !videoSourceUrl && !isDemoMode;
+
   return (
     <div
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
       className="relative flex-1 h-full w-full bg-[#050507] overflow-hidden flex items-center justify-center p-8 select-none"
     >
-      {/* Studio Canvas Card */}
+      {/* 1. STABLE STUDIO CANVAS (Aspect Ratio Box & Mesh Background) */}
       <motion.div
-        animate={{
-          scale: viewportScale,
-          rotateX: camera.perspective3D.pitchDeg,
-          rotateY: camera.perspective3D.yawDeg,
-        }}
-        transition={{
-          type: 'spring',
-          stiffness: camera.springPhysics.stiffness,
-          damping: camera.springPhysics.damping,
-        }}
-        style={{
-          perspective: 1200,
-          transformStyle: 'preserve-3d',
-        }}
+        animate={{ scale: viewportScale }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
         className={`relative w-full ${aspectClassMap[canvas.aspectRatio]} rounded-3xl overflow-hidden shadow-[0_32px_96px_rgba(0,0,0,0.85)] border border-white/[0.08] flex items-center justify-center transition-all duration-300`}
       >
         {/* Background Mesh Gradient */}
@@ -181,89 +185,156 @@ export function CanvasViewport() {
           className="relative w-full h-full flex items-center justify-center transition-all duration-300"
           style={{
             padding: `${canvas.paddingPx}px`,
+            perspective: 1200, // 3D Perspective container
           }}
         >
-          {/* Scalable Window Mockup Frame with Live Spring Transforms */}
-          <div
-            style={{
-              transform: `scale(${springTransform.zoom}) translate(${panOffsetX}%, ${panOffsetY}%)`,
-              transformOrigin: 'center center',
-              transition: 'transform 0.05s linear',
-            }}
-            className="w-full h-full relative"
-          >
-            <WindowChrome frame={canvas.frame}>
-              {/* Interactive Video Container */}
-              <div
-                ref={containerRef}
-                onClick={handleCanvasClick}
-                className="relative w-full h-full bg-[#0b0c10] flex items-center justify-center overflow-hidden cursor-crosshair group/canvas"
-              >
-                {videoSourceUrl ? (
-                  <video
-                    ref={videoRef}
-                    src={videoSourceUrl}
-                    playsInline
-                    onTimeUpdate={handleTimeUpdate}
-                    className="w-full h-full object-cover pointer-events-none"
+          {isProjectEmpty ? (
+            /* EMPTY STATE HERO */
+            <div className="relative z-10 w-full max-w-lg p-8 rounded-3xl bg-black/60 backdrop-blur-2xl border border-white/[0.12] shadow-2xl text-center space-y-6">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center mx-auto shadow-lg shadow-indigo-600/30">
+                <Sparkles className="w-6 h-6 text-indigo-400" />
+              </div>
+
+              <div className="space-y-1.5">
+                <h2 className="text-xl font-bold text-white tracking-tight">
+                  Welcome to ScreenCraft Pro
+                </h2>
+                <p className="text-xs text-zinc-400 max-w-xs mx-auto">
+                  Create high-production product videos with automatic camera zoom and smooth cursor physics.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
+                {/* 1. Demo Project */}
+                <button
+                  type="button"
+                  onClick={loadDemoProject}
+                  className="p-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs border border-white/20 shadow-lg shadow-indigo-600/40 flex flex-col items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                >
+                  <Film className="w-4 h-4" />
+                  <span>Load Demo</span>
+                </button>
+
+                {/* 2. Upload Video */}
+                <label className="p-3.5 rounded-2xl bg-white/[0.06] hover:bg-white/[0.12] text-zinc-200 font-semibold text-xs border border-white/10 flex flex-col items-center gap-1.5 transition-all cursor-pointer active:scale-95">
+                  <Upload className="w-4 h-4 text-zinc-400" />
+                  <span>Upload Video</span>
+                  <input
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setVideoSource(f);
+                    }}
                   />
-                ) : (
-                  /* Rich Sample Mock Content when no video is imported yet */
-                  <div className="relative w-full h-full flex flex-col items-center justify-center p-6 text-center select-none">
-                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:24px_24px]" />
-                    <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
+                </label>
 
-                    <div className="relative z-10 max-w-md space-y-4">
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.06] border border-white/[0.1] text-[11px] font-medium text-indigo-300">
-                        <Sparkles className="w-3 h-3 text-indigo-400" />
-                        <span>Next-Gen Screen Recording</span>
-                      </div>
+                {/* 3. Record Screen */}
+                <button
+                  type="button"
+                  onClick={() => setRecordModalOpen(true)}
+                  className="p-3.5 rounded-2xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 font-semibold text-xs border border-rose-500/30 flex flex-col items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                >
+                  <Monitor className="w-4 h-4 text-rose-400" />
+                  <span>Record Screen</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* 2. 3D PERSPECTIVE WINDOW FRAME (Tilt applied strictly to this element) */
+            <motion.div
+              animate={{
+                rotateX: camera.perspective3D.pitchDeg,
+                rotateY: camera.perspective3D.yawDeg,
+              }}
+              transition={{
+                type: 'spring',
+                stiffness: camera.springPhysics.stiffness,
+                damping: camera.springPhysics.damping,
+              }}
+              style={{
+                transformStyle: 'preserve-3d',
+              }}
+              className="w-full h-full relative"
+            >
+              <WindowChrome frame={canvas.frame}>
+                {/* Scalable Inner Content with Spring Camera Zoom & Pan */}
+                <div
+                  ref={containerRef}
+                  onClick={handleCanvasClick}
+                  style={{
+                    transform: `scale(${springTransform.zoom}) translate(${panOffsetX}%, ${panOffsetY}%)`,
+                    transformOrigin: 'center center',
+                    transition: 'transform 0.05s linear',
+                  }}
+                  className="relative w-full h-full bg-[#0b0c10] flex items-center justify-center overflow-hidden cursor-crosshair group/canvas"
+                >
+                  {videoSourceUrl ? (
+                    <video
+                      ref={videoRef}
+                      src={videoSourceUrl}
+                      playsInline
+                      className="w-full h-full object-cover pointer-events-none"
+                    />
+                  ) : (
+                    /* Demo Showcase Visuals */
+                    <div className="relative w-full h-full flex flex-col items-center justify-center p-6 text-center select-none bg-gradient-to-b from-[#0f1117] to-[#07080c]">
+                      <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:24px_24px]" />
+                      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
 
-                      <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                        Create Cinematic Product Demos in Seconds
-                      </h1>
+                      <div className="relative z-10 max-w-md space-y-4">
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.06] border border-white/[0.1] text-[11px] font-medium text-indigo-300">
+                          <Sparkles className="w-3 h-3 text-indigo-400" />
+                          <span>Interactive Demo Showcase</span>
+                        </div>
 
-                      <p className="text-xs text-zinc-400 leading-relaxed max-w-sm mx-auto">
-                        Drop any video here or click <strong>Record</strong> above to test automatic camera zoom & cursor tracking in real-time!
-                      </p>
+                        <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                          Create Cinematic Product Demos in Seconds
+                        </h1>
 
-                      <div className="flex items-center justify-center gap-3 pt-2">
-                        <label className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 transition-all cursor-pointer">
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>Upload Sample Video</span>
-                          <input
-                            type="file"
-                            accept="video/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              const f = e.target.files?.[0];
-                              if (f) setVideoSource(f);
-                            }}
-                          />
-                        </label>
+                        <p className="text-xs text-zinc-400 leading-relaxed max-w-sm mx-auto">
+                          Hit <strong>Play (Space)</strong> below to watch the timeline glide with live spring auto-zoom into keyframes!
+                        </p>
+
+                        <div className="flex items-center justify-center gap-3 pt-2">
+                          <label className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 transition-all cursor-pointer">
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>Upload Custom Video</span>
+                            <input
+                              type="file"
+                              accept="video/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) setVideoSource(f);
+                              }}
+                            />
+                          </label>
+                        </div>
                       </div>
                     </div>
+                  )}
+
+                  {/* Focus Target Crosshair Hint on Hover */}
+                  <div className="absolute top-3 right-3 z-30 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-[10px] font-medium text-zinc-300 opacity-0 group-hover/canvas:opacity-100 transition-opacity flex items-center gap-1.5 pointer-events-none">
+                    <Crosshair className="w-3 h-3 text-indigo-400" />
+                    <span>Click to change Zoom Focal Point</span>
                   </div>
-                )}
 
-                {/* Focus Target Crosshair Hint on Hover */}
-                <div className="absolute top-3 right-3 z-30 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-[10px] font-medium text-zinc-300 opacity-0 group-hover/canvas:opacity-100 transition-opacity flex items-center gap-1.5 pointer-events-none">
-                  <Crosshair className="w-3 h-3 text-indigo-400" />
-                  <span>Click to change Zoom Focal Point</span>
+                  {/* Vector Cursor Overlay */}
+                  <VectorCursor
+                    config={cursor}
+                    position={{
+                      x: springTransform.focusX,
+                      y: springTransform.focusY,
+                    }}
+                    isClicking={currentTime % 2 > 1.6}
+                  />
                 </div>
-
-                {/* Vector Cursor Overlay */}
-                <VectorCursor
-                  config={cursor}
-                  position={{
-                    x: springTransform.focusX,
-                    y: springTransform.focusY,
-                  }}
-                  isClicking={currentTime % 2 > 1.6}
-                />
-              </div>
-            </WindowChrome>
-          </div>
+              </WindowChrome>
+            </motion.div>
+          )}
         </div>
 
         {/* Kinetic Subtitle Card */}
@@ -300,7 +371,7 @@ export function CanvasViewport() {
       </motion.div>
 
       {/* Floating Playback HUD */}
-      <PlaybackHUD />
+      {!isProjectEmpty && <PlaybackHUD />}
     </div>
   );
 }

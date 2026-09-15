@@ -2,8 +2,7 @@ import React from 'react';
 import { useStudioStore } from '../../store/useStudioStore';
 import { NumberSlider } from '../common/NumberSlider';
 import { ToggleSwitch } from '../common/ToggleSwitch';
-import { SegmentedControl } from '../common/SegmentedControl';
-import { Camera, Compass, Sparkles } from 'lucide-react';
+import { Compass, Sparkles, Wand2 } from 'lucide-react';
 
 export function CameraCard() {
   const {
@@ -12,6 +11,7 @@ export function CameraCard() {
     setAutoZoomEnabled,
     setDefaultZoomFactor,
     setSpringPhysics,
+    suggestSmartAutoZooms,
   } = useStudioStore();
 
   const { camera } = project;
@@ -24,11 +24,11 @@ export function CameraCard() {
 
   return (
     <div className="space-y-5">
-      {/* 3D Perspective Tilt Controls */}
+      {/* 3D Perspective Tilt Controls (Applied to Window Frame) */}
       <div className="space-y-3">
         <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
           <Compass className="w-3.5 h-3.5 text-zinc-500" />
-          <span>3D Perspective Tilt</span>
+          <span>3D Window Tilt</span>
         </label>
 
         <NumberSlider
@@ -62,9 +62,27 @@ export function CameraCard() {
 
       {/* Auto-Zoom Engine */}
       <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Auto-Zoom Engine</span>
+          </label>
+
+          {/* 1-Click Smart Auto-Zoom Button */}
+          <button
+            type="button"
+            onClick={suggestSmartAutoZooms}
+            title="Automatically generate intelligent zoom keyframes for the entire timeline"
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 transition-colors cursor-pointer"
+          >
+            <Wand2 className="w-3 h-3 text-indigo-300" />
+            <span>Magic Auto-Zoom</span>
+          </button>
+        </div>
+
         <ToggleSwitch
-          label="Automatic Smart Zoom"
-          description="Automatically centers camera on clicks and typing"
+          label="Enable Dynamic Zooms"
+          description="Glides camera with spring physics into focus areas"
           checked={camera.autoZoomEnabled}
           onChange={setAutoZoomEnabled}
         />

@@ -1,0 +1,140 @@
+import { StudioProject } from '../types/project';
+
+/**
+ * High-Quality Built-in Demo Project Specification
+ */
+export const DEMO_PROJECT: StudioProject = {
+  id: 'proj_demo_showcase',
+  title: 'SaaS Launch Demo',
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  durationSeconds: 30.0,
+  canvas: {
+    aspectRatio: '16:9',
+    width: 3840,
+    height: 2160,
+    paddingPx: 48,
+    cornerRadiusPx: 24,
+    background: {
+      type: 'mesh_gradient',
+      preset: 'apple_aurora',
+      colors: ['#1e1b4b', '#581c87', '#0d9488', '#0f172a'],
+      animated: true,
+      speed: 0.5,
+    },
+    shadow: {
+      type: 'pro_3d',
+      blurPx: 48,
+      offsetY: 24,
+      color: 'rgba(0, 0, 0, 0.55)',
+    },
+    frame: {
+      type: 'safari',
+      title: 'ScreenCraft Pro — Next-Gen Motion Studio',
+      url: 'https://screencraft.pro',
+      showTrafficLights: true,
+      theme: 'dark',
+    },
+  },
+  camera: {
+    autoZoomEnabled: true,
+    defaultZoomFactor: 2.0,
+    springPhysics: {
+      stiffness: 180,
+      damping: 24,
+      mass: 1.0,
+    },
+    perspective3D: {
+      pitchDeg: 12.0,
+      yawDeg: -6.0,
+      rollDeg: 0.0,
+    },
+  },
+  cursor: {
+    style: 'macos_arrow',
+    scale: 1.4,
+    smoothingEnabled: true,
+    smoothingAlgorithm: 'catmull_rom',
+    motionBlurEnabled: true,
+    clickEffect: {
+      enabled: true,
+      style: 'expanding_halo',
+      color: '#6366F1',
+      radiusPx: 32,
+    },
+    autoHideStationary: true,
+    hideAfterSeconds: 2.0,
+  },
+  subtitles: {
+    enabled: true,
+    fontFamily: 'SF Pro Display',
+    fontSizePx: 38,
+    fontWeight: 700,
+    style: 'karaoke_glow',
+    activeWordColor: '#6366F1',
+    inactiveWordColor: 'rgba(255, 255, 255, 0.75)',
+    cardBackground: 'rgba(0, 0, 0, 0.65)',
+    position: 'bottom_center',
+  },
+  zoomClips: [
+    {
+      id: 'zoom_demo_01',
+      startTime: 3.0,
+      endTime: 10.5,
+      zoomFactor: 2.0,
+      focusTarget: { x: 0.65, y: 0.40 },
+    },
+    {
+      id: 'zoom_demo_02',
+      startTime: 14.0,
+      endTime: 23.0,
+      zoomFactor: 2.4,
+      focusTarget: { x: 0.32, y: 0.55 },
+    },
+  ],
+  videoClips: [
+    {
+      id: 'video_demo',
+      sourceFile: 'demo_showcase.mp4',
+      timelineStart: 0.0,
+      sourceStart: 0.0,
+      duration: 30.0,
+      playbackRate: 1.0,
+    },
+  ],
+  subtitleClips: [
+    {
+      id: 'sub_01',
+      start: 1.0,
+      end: 4.5,
+      text: 'Welcome to ScreenCraft Pro.',
+      words: [
+        { word: 'Welcome', start: 1.0, end: 1.6 },
+        { word: 'to', start: 1.7, end: 1.9 },
+        { word: 'ScreenCraft', start: 2.0, end: 2.8 },
+        { word: 'Pro.', start: 2.9, end: 3.5 },
+      ],
+    },
+    {
+      id: 'sub_02',
+      start: 5.0,
+      end: 11.0,
+      text: 'Turn ordinary screen recordings into cinematic product videos.',
+      words: [
+        { word: 'Turn', start: 5.0, end: 5.4 },
+        { word: 'ordinary', start: 5.5, end: 6.0 },
+        { word: 'screen', start: 6.1, end: 6.5 },
+        { word: 'recordings', start: 6.6, end: 7.2 },
+        { word: 'into', start: 7.3, end: 7.6 },
+        { word: 'cinematic', start: 7.7, end: 8.4 },
+        { word: 'product', start: 8.5, end: 9.1 },
+        { word: 'videos.', start: 9.2, end: 10.5 },
+      ],
+    },
+  ],
+  audioConfig: {
+    gainDb: 2.5,
+    noiseGateEnabled: true,
+    autoDuckingEnabled: true,
+  },
+};

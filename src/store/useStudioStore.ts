@@ -9,6 +9,8 @@ import {
   CursorStyle,
 } from '../types/project';
 import { extractAudioWaveformPeaks } from '../engine/audioWaveform';
+import { DEMO_PROJECT } from '../engine/demoProject';
+import { generateSmartAutoZooms } from '../engine/autoZoomGenerator';
 
 interface StudioState {
   // Active Project State
@@ -16,13 +18,16 @@ interface StudioState {
   activeTab: ActiveToolTab;
   setActiveTab: (tab: ActiveToolTab) => void;
 
-  // Real Ingested Media State
+  // Media & Demo State
+  isDemoMode: boolean;
   videoSourceBlob: Blob | null;
   videoSourceUrl: string | null;
   videoElement: HTMLVideoElement | null;
   audioPeaks: number[];
   setVideoElement: (el: HTMLVideoElement | null) => void;
   setVideoSource: (file: File | Blob) => Promise<void>;
+  loadDemoProject: () => void;
+  clearProject: () => void;
 
   // Playback State
   isPlaying: boolean;
@@ -41,9 +46,13 @@ interface StudioState {
   togglePlay: () => void;
   setIsPlaying: (playing: boolean) => void;
   seek: (time: number) => void;
+  advanceClock: (dt: number) => void;
   setPlaybackRate: (rate: number) => void;
   setViewportScale: (scale: number) => void;
   setSelectedZoomClipId: (id: string | null) => void;
+
+  // Smart Auto-Zoom
+  suggestSmartAutoZooms: () => void;
 
   // Project Modifiers
   setProjectTitle: (title: string) => void;
@@ -84,12 +93,12 @@ interface StudioState {
   setSubtitleActiveColor: (color: string) => void;
 }
 
-const DEFAULT_PROJECT: StudioProject = {
-  id: 'proj_default_01',
-  title: 'SaaS Launch Demo',
+const EMPTY_PROJECT: StudioProject = {
+  id: 'proj_empty',
+  title: 'Untitled Project',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
-  durationSeconds: 32.0,
+  durationSeconds: 0,
   canvas: {
     aspectRatio: '16:9',
     width: 3840,
@@ -111,7 +120,7 @@ const DEFAULT_PROJECT: StudioProject = {
     },
     frame: {
       type: 'safari',
-      title: 'ScreenCraft Pro — Next-Gen Motion Studio',
+      title: 'ScreenCraft Pro',
       url: 'https://screencraft.pro',
       showTrafficLights: true,
       theme: 'dark',
@@ -157,61 +166,9 @@ const DEFAULT_PROJECT: StudioProject = {
     cardBackground: 'rgba(0, 0, 0, 0.65)',
     position: 'bottom_center',
   },
-  zoomClips: [
-    {
-      id: 'zoom_01',
-      startTime: 3.0,
-      endTime: 10.5,
-      zoomFactor: 2.0,
-      focusTarget: { x: 0.65, y: 0.40 },
-    },
-    {
-      id: 'zoom_02',
-      startTime: 14.0,
-      endTime: 24.0,
-      zoomFactor: 2.4,
-      focusTarget: { x: 0.35, y: 0.55 },
-    },
-  ],
-  videoClips: [
-    {
-      id: 'video_main',
-      sourceFile: 'sample_recording.mp4',
-      timelineStart: 0.0,
-      sourceStart: 0.0,
-      duration: 32.0,
-      playbackRate: 1.0,
-    },
-  ],
-  subtitleClips: [
-    {
-      id: 'sub_01',
-      start: 1.0,
-      end: 4.5,
-      text: 'Welcome to ScreenCraft Pro.',
-      words: [
-        { word: 'Welcome', start: 1.0, end: 1.6 },
-        { word: 'to', start: 1.7, end: 1.9 },
-        { word: 'ScreenCraft', start: 2.0, end: 2.8 },
-        { word: 'Pro.', start: 2.9, end: 3.5 },
-      ],
-    },
-    {
-      id: 'sub_02',
-      start: 5.0,
-      end: 9.5,
-      text: 'Turn ordinary screen captures into cinematic videos in seconds.',
-      words: [
-        { word: 'Turn', start: 5.0, end: 5.4 },
-        { word: 'ordinary', start: 5.5, end: 6.0 },
-        { word: 'screen', start: 6.1, end: 6.5 },
-        { word: 'captures', start: 6.6, end: 7.2 },
-        { word: 'into', start: 7.3, end: 7.6 },
-        { word: 'cinematic', start: 7.7, end: 8.4 },
-        { word: 'videos.', start: 8.5, end: 9.2 },
-      ],
-    },
-  ],
+  zoomClips: [],
+  videoClips: [],
+  subtitleClips: [],
   audioConfig: {
     gainDb: 2.5,
     noiseGateEnabled: true,
@@ -220,21 +177,54 @@ const DEFAULT_PROJECT: StudioProject = {
 };
 
 export const useStudioStore = create<StudioState>((set, get) => ({
-  project: DEFAULT_PROJECT,
+  project: EMPTY_PROJECT,
   activeTab: 'canvas' as any,
   setActiveTab: (tab) => set({ activeTab: tab }),
 
+  isDemoMode: false,
   videoSourceBlob: null,
   videoSourceUrl: null,
   videoElement: null,
   audioPeaks: [],
   setVideoElement: (el) => set({ videoElement: el }),
 
+  loadDemoProject: () => {
+    // Generate dummy audio peaks for demo
+    const peaks = Array.from({ length: 180 }).map((_, i) => {
+      const v = Math.abs(Math.sin(i * 0.18) * Math.cos(i * 0.45));
+      return Math.max(0.15, v * 0.85);
+    });
+
+    set({
+      project: DEMO_PROJECT,
+      isDemoMode: true,
+      videoSourceUrl: null,
+      videoSourceBlob: null,
+      audioPeaks: peaks,
+      currentTime: 0,
+      isPlaying: false,
+      selectedZoomClipId: 'zoom_demo_01',
+    });
+  },
+
+  clearProject: () => {
+    set({
+      project: EMPTY_PROJECT,
+      isDemoMode: false,
+      videoSourceUrl: null,
+      videoSourceBlob: null,
+      audioPeaks: [],
+      currentTime: 0,
+      isPlaying: false,
+      selectedZoomClipId: null,
+    });
+  },
+
   setVideoSource: async (file: File | Blob) => {
     const url = URL.createObjectURL(file);
     const filename = (file as File).name || 'recorded_screen.webm';
 
-    // Temporary video to determine duration & dimensions
+    // Temporary video to determine duration
     const tempVideo = document.createElement('video');
     tempVideo.src = url;
     tempVideo.preload = 'metadata';
@@ -251,7 +241,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     // Extract real audio waveform
     const peaks = await extractAudioWaveformPeaks(file, 200);
 
+    // Automatically generate initial smart auto-zooms
+    const smartZooms = generateSmartAutoZooms({ durationSeconds: duration });
+
     set((state) => ({
+      isDemoMode: false,
       videoSourceBlob: file,
       videoSourceUrl: url,
       audioPeaks: peaks,
@@ -271,23 +265,26 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             playbackRate: 1.0,
           },
         ],
-        zoomClips: [
-          {
-            id: 'zoom_auto_01',
-            startTime: Math.min(2.0, duration * 0.1),
-            endTime: Math.min(duration * 0.45, 10.0),
-            zoomFactor: 2.0,
-            focusTarget: { x: 0.6, y: 0.4 },
-          },
-          {
-            id: 'zoom_auto_02',
-            startTime: Math.min(duration * 0.55, 15.0),
-            endTime: Math.min(duration * 0.85, 25.0),
-            zoomFactor: 2.4,
-            focusTarget: { x: 0.4, y: 0.6 },
-          },
-        ],
+        zoomClips: smartZooms,
       },
+    }));
+  },
+
+  suggestSmartAutoZooms: () => {
+    const { project } = get();
+    if (project.durationSeconds <= 0) return;
+
+    const smartZooms = generateSmartAutoZooms({
+      durationSeconds: project.durationSeconds,
+      zoomIntensity: 'standard',
+    });
+
+    set((state) => ({
+      project: {
+        ...state.project,
+        zoomClips: smartZooms,
+      },
+      selectedZoomClipId: smartZooms[0]?.id || null,
     }));
   },
 
@@ -295,7 +292,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   currentTime: 0,
   playbackRate: 1.0,
   viewportScale: 1.0,
-  selectedZoomClipId: 'zoom_01',
+  selectedZoomClipId: null,
 
   isRecordModalOpen: false,
   isExportModalOpen: false,
@@ -303,12 +300,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setExportModalOpen: (open) => set({ isExportModalOpen: open }),
 
   togglePlay: () => {
-    const isPlaying = !get().isPlaying;
-    const { videoElement, currentTime, project } = get();
+    const { isPlaying, videoElement, currentTime, project } = get();
+    const nextPlaying = !isPlaying;
+
+    if (project.durationSeconds <= 0) return;
 
     if (videoElement) {
-      if (isPlaying) {
-        if (currentTime >= project.durationSeconds) {
+      if (nextPlaying) {
+        if (currentTime >= project.durationSeconds - 0.1) {
           videoElement.currentTime = 0;
           set({ currentTime: 0 });
         }
@@ -316,8 +315,13 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       } else {
         videoElement.pause();
       }
+    } else {
+      if (nextPlaying && currentTime >= project.durationSeconds - 0.1) {
+        set({ currentTime: 0 });
+      }
     }
-    set({ isPlaying });
+
+    set({ isPlaying: nextPlaying });
   },
 
   setIsPlaying: (playing) => {
@@ -336,6 +340,24 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       videoElement.currentTime = boundedTime;
     }
     set({ currentTime: boundedTime });
+  },
+
+  advanceClock: (dt: number) => {
+    const { isPlaying, currentTime, playbackRate, project, videoElement } = get();
+    if (!isPlaying || project.durationSeconds <= 0) return;
+
+    const nextTime = currentTime + dt * playbackRate;
+
+    if (nextTime >= project.durationSeconds) {
+      set({ currentTime: project.durationSeconds, isPlaying: false });
+      if (videoElement) videoElement.pause();
+    } else {
+      set({ currentTime: nextTime });
+      // Maintain sync with video element
+      if (videoElement && Math.abs(videoElement.currentTime - nextTime) > 0.12) {
+        videoElement.currentTime = nextTime;
+      }
+    }
   },
 
   setPlaybackRate: (rate) => {

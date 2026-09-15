@@ -10,8 +10,7 @@ import {
   Trash2,
   ZoomIn,
   ZoomOut,
-  Magnet,
-  Sparkles,
+  Wand2,
   Plus,
 } from 'lucide-react';
 
@@ -23,9 +22,10 @@ export function MultiTrackTimeline() {
     addZoomClip,
     selectedZoomClipId,
     deleteZoomClip,
+    suggestSmartAutoZooms,
   } = useStudioStore();
 
-  const [pixelsPerSecond, setPixelsPerSecond] = useState(24); // Zoom scale
+  const [pixelsPerSecond, setPixelsPerSecond] = useState(24);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
 
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -40,13 +40,21 @@ export function MultiTrackTimeline() {
 
   const playheadPosition = currentTime * pixelsPerSecond;
 
+  if (project.durationSeconds <= 0) {
+    return (
+      <div className="h-28 w-full flex items-center justify-center border-t border-white/[0.08] bg-[#09090c]/95 backdrop-blur-2xl text-xs text-zinc-500 select-none">
+        Import a video, record your screen, or load the demo project to activate the multi-track timeline editor.
+      </div>
+    );
+  }
+
   return (
     <div className="h-56 w-full flex flex-col border-t border-white/[0.08] bg-[#09090c]/95 backdrop-blur-2xl select-none z-20">
       {/* Timeline Toolbar Header */}
       <div className="h-10 px-4 flex items-center justify-between border-b border-white/[0.06] bg-white/[0.02]">
         {/* Left Actions */}
         <div className="flex items-center gap-2">
-          {/* Add Zoom Keyframe */}
+          {/* Add Manual Zoom Keyframe */}
           <button
             type="button"
             onClick={() =>
@@ -60,16 +68,18 @@ export function MultiTrackTimeline() {
             className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-lg text-indigo-200 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 transition-colors cursor-pointer"
           >
             <Plus className="w-3 h-3 text-indigo-300" />
-            <span>Add Auto-Zoom</span>
+            <span>Add Zoom</span>
           </button>
 
-          {/* Split Clip */}
+          {/* Magic Auto-Zoom Button */}
           <button
             type="button"
-            title="Split Clip at Playhead (⌘B)"
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
+            onClick={suggestSmartAutoZooms}
+            title="Auto-generate intelligent zoom keyframes for the full video"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-lg text-amber-200 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 transition-colors cursor-pointer"
           >
-            <Scissors className="w-3.5 h-3.5" />
+            <Wand2 className="w-3 h-3 text-amber-300" />
+            <span>Auto-Suggest Zooms</span>
           </button>
 
           {/* Delete Selected */}
@@ -156,9 +166,7 @@ export function MultiTrackTimeline() {
             className="absolute top-0 bottom-0 z-30 pointer-events-none flex flex-col items-center"
             style={{ left: `${playheadPosition}px` }}
           >
-            {/* Diamond Top Cap */}
             <div className="w-3 h-3 bg-indigo-400 border border-white rotate-45 -mt-1 shadow-[0_0_12px_rgba(99,102,241,0.9)]" />
-            {/* Vertical Needle Line */}
             <div className="w-[2px] flex-1 bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
           </div>
 
