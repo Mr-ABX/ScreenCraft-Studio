@@ -1,9 +1,9 @@
-import React from 'react';
 import {
+  FolderOpen,
   Layers,
   ZoomIn,
   MousePointer2,
-  AppWindow,
+  Sparkles,
   Captions,
   Volume2,
   Settings,
@@ -17,10 +17,11 @@ export function LeftNav() {
   const { activeTab, setActiveTab } = useStudioStore();
 
   const tools: { id: ActiveToolTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'canvas' as any, label: 'Canvas', icon: <Layers className="w-4 h-4" /> },
+    { id: 'media', label: 'Media & Imports', icon: <FolderOpen className="w-4 h-4" /> },
+    { id: 'canvas', label: 'Canvas & Frame', icon: <Layers className="w-4 h-4" /> },
     { id: 'zoom', label: 'Auto-Zoom', icon: <ZoomIn className="w-4 h-4" /> },
-    { id: 'cursor', label: 'Cursor', icon: <MousePointer2 className="w-4 h-4" /> },
-    { id: 'frames', label: 'Frames', icon: <AppWindow className="w-4 h-4" /> },
+    { id: 'cursor', label: 'Cursor Studio', icon: <MousePointer2 className="w-4 h-4" /> },
+    { id: 'effects', label: 'Effects & Polish', icon: <Sparkles className="w-4 h-4" /> },
     { id: 'subtitles', label: 'Subtitles', icon: <Captions className="w-4 h-4" /> },
     { id: 'audio', label: 'Audio', icon: <Volume2 className="w-4 h-4" /> },
   ];

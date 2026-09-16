@@ -48,14 +48,24 @@ export function CanvasViewport() {
     focusY: 0.5,
   });
 
-  // Register video element ref in store
+  // Register video element ref in store with lifecycle cleanup
   useEffect(() => {
-    if (videoRef.current) {
-      setVideoElement(videoRef.current);
-    } else {
-      setVideoElement(null);
+    const video = videoRef.current;
+    if (video) {
+      setVideoElement(video);
+      // Synchronize video time with store currentTime
+      const currentStoreTime = useStudioStore.getState().currentTime;
+      if (Math.abs(video.currentTime - currentStoreTime) > 0.05) {
+        video.currentTime = currentStoreTime;
+      }
     }
-  }, [videoSourceUrl, setVideoElement]);
+    return () => {
+      if (video) {
+        video.pause();
+      }
+      setVideoElement(null);
+    };
+  }, [videoSourceUrl, canvas.frame.type, setVideoElement]);
 
   // Update spring configuration
   useEffect(() => {
@@ -160,12 +170,23 @@ export function CanvasViewport() {
     obsidian_studio: 'radial-gradient(circle at 50% 30%, #18181b 0%, #0c0c0e 60%, #050507 100%)',
     cyber_sunset: 'radial-gradient(circle at 80% 20%, #ea580c 0%, #701a75 50%, #0f172a 100%)',
     midnight_velvet: 'radial-gradient(circle at 30% 70%, #312e81 0%, #1e1b4b 60%, #09090b 100%)',
+    cosmic_nebula: 'radial-gradient(circle at 70% 30%, #ec4899 0%, #6366f1 45%, #0f172a 100%)',
+    emerald_isle: 'radial-gradient(circle at 25% 25%, #065f46 0%, #0f766e 40%, #042f2e 85%, #050507 100%)',
+    cupertino_grid: 'radial-gradient(circle at 50% 50%, #1e1e24 0%, #0a0a0c 100%), repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 24px), repeating-linear-gradient(90deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 24px)',
+    sonoma_waves: 'radial-gradient(circle at 80% 80%, #fb923c 0%, #c026d3 35%, #4338ca 70%, #050507 100%)',
+    sequoia_mist: 'radial-gradient(circle at 30% 20%, #38bdf8 0%, #0284c7 30%, #1e293b 70%, #050507 100%)',
   };
 
-  const currentBgStyle =
-    canvas.background.type === 'mesh_gradient'
-      ? backgroundPresets[canvas.background.preset] || backgroundPresets.apple_aurora
-      : '#050507';
+  const currentBgStyle: React.CSSProperties =
+    canvas.background.type === 'custom_image' && canvas.background.customImageUrl
+      ? {
+          backgroundImage: `url(${canvas.background.customImageUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }
+      : {
+          background: backgroundPresets[canvas.background.preset] || backgroundPresets.apple_aurora,
+        };
 
   // Compute camera pan offset based on spring state
   const panOffsetX = (0.5 - springTransform.focusX) * (springTransform.zoom - 1) * 100;
@@ -222,11 +243,24 @@ export function CanvasViewport() {
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
         className={`relative w-full ${aspectClassMap[canvas.aspectRatio]} rounded-3xl overflow-hidden shadow-[0_32px_96px_rgba(0,0,0,0.85)] border border-white/[0.08] flex items-center justify-center transition-all duration-300`}
       >
-        {/* Background Mesh Gradient */}
+        {/* Background Mesh / Wallpaper / Custom Gradient */}
         <div
-          className="absolute inset-0 w-full h-full transition-all duration-500"
-          style={{ background: currentBgStyle }}
+          className="absolute inset-0 w-full h-full transition-all duration-500 scale-105"
+          style={{
+            ...currentBgStyle,
+            filter: project.effects?.backgroundBlurPx ? `blur(${project.effects.backgroundBlurPx}px)` : undefined,
+          }}
         />
+
+        {/* Cinematic Vignette Overlay */}
+        {project.effects?.vignetteIntensity > 0 && (
+          <div
+            className="absolute inset-0 pointer-events-none z-10 transition-opacity duration-300"
+            style={{
+              background: `radial-gradient(circle at 50% 50%, transparent 45%, rgba(0,0,0,${project.effects.vignetteIntensity * 0.85}) 100%)`,
+            }}
+          />
+        )}
 
         {/* Framing Inset Container */}
         <div
@@ -238,7 +272,7 @@ export function CanvasViewport() {
         >
           {isProjectEmpty ? (
             /* EMPTY STATE HERO */
-            <div className="relative z-10 w-full max-w-lg p-8 rounded-3xl bg-black/60 backdrop-blur-2xl border border-white/[0.12] shadow-2xl text-center space-y-6">
+            <div className="relative z-20 w-full max-w-lg p-8 rounded-3xl bg-black/60 backdrop-blur-2xl border border-white/[0.12] shadow-2xl text-center space-y-6">
               <div className="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center mx-auto shadow-lg shadow-indigo-600/30">
                 <Sparkles className="w-6 h-6 text-indigo-400" />
               </div>
@@ -304,9 +338,9 @@ export function CanvasViewport() {
               style={{
                 transformStyle: 'preserve-3d',
               }}
-              className="w-full h-full relative"
+              className="w-full h-full relative z-20 flex items-center justify-center"
             >
-              <WindowChrome frame={canvas.frame}>
+              <WindowChrome frame={canvas.frame} cornerRadiusPx={canvas.cornerRadiusPx}>
                 {/* Scalable Inner Content with Spring Camera Zoom & Pan */}
                 <div
                   ref={containerRef}
@@ -316,7 +350,7 @@ export function CanvasViewport() {
                     transformOrigin: 'center center',
                     transition: 'transform 0.05s linear',
                   }}
-                  className="relative w-full h-full bg-[#0b0c10] flex items-center justify-center overflow-hidden cursor-crosshair group/canvas"
+                  className="relative w-full h-full bg-[#0b0c10] flex items-center justify-center overflow-hidden cursor-crosshair group/canvas min-h-0"
                 >
                   {videoSourceUrl ? (
                     <video
@@ -324,7 +358,7 @@ export function CanvasViewport() {
                       src={videoSourceUrl}
                       playsInline
                       onEnded={() => useStudioStore.getState().setIsPlaying(false)}
-                      className="w-full h-full object-cover pointer-events-none"
+                      className="w-full h-full object-contain pointer-events-none"
                     />
                   ) : (
                     /* Demo Showcase Visuals */

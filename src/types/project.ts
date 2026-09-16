@@ -8,7 +8,7 @@ export type CursorStyle = 'macos_arrow' | 'windows_arrow' | 'pointer' | 'glow_do
 
 export type ClickHaloStyle = 'expanding_halo' | 'pulsing_dot' | 'none';
 
-export type ActiveToolTab = 'media' | 'zoom' | 'cursor' | 'frames' | 'subtitles' | 'audio' | 'settings';
+export type ActiveToolTab = 'media' | 'canvas' | 'zoom' | 'cursor' | 'effects' | 'subtitles' | 'audio' | 'settings';
 
 export interface BackgroundConfig {
   type: BackgroundType;
@@ -136,6 +136,13 @@ export interface MouseTelemetrySample {
   isClick: boolean;
 }
 
+export interface EffectsConfig {
+  motionBlur: boolean;
+  vignetteIntensity: number; // 0.0 to 1.0
+  backgroundBlurPx: number; // 0 to 40
+  cameraShake: boolean;
+}
+
 export interface StudioProject {
   id: string;
   title: string;
@@ -145,6 +152,7 @@ export interface StudioProject {
   canvas: CanvasConfig;
   camera: CameraConfig;
   cursor: CursorConfig;
+  effects: EffectsConfig;
   subtitles: SubtitlesConfig;
   zoomClips: ZoomClip[];
   videoClips: VideoClip[];

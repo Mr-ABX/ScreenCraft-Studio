@@ -7,6 +7,7 @@ import {
   FrameType,
   BackgroundType,
   CursorStyle,
+  EffectsConfig,
 } from '../types/project';
 import { extractAudioWaveformPeaks } from '../engine/audioWaveform';
 import { DEMO_PROJECT } from '../engine/demoProject';
@@ -66,9 +67,13 @@ interface StudioState {
   setCanvasCornerRadius: (radius: number) => void;
   setBackgroundType: (type: BackgroundType) => void;
   setBackgroundPreset: (preset: string, colors: string[]) => void;
+  setCustomBackgroundImage: (file: File | Blob) => void;
   setFrameType: (frameType: FrameType) => void;
   setFrameUrl: (url: string) => void;
   setFrameTitle: (title: string) => void;
+
+  // Effects Modifiers
+  setEffectsConfig: (updates: Partial<EffectsConfig>) => void;
   
   // Camera & 3D Modifiers
   setPerspective3D: (pitch: number, yaw: number) => void;
@@ -83,6 +88,7 @@ interface StudioState {
   setCursorScale: (scale: number) => void;
   setClickEffectEnabled: (enabled: boolean) => void;
   setMotionBlurEnabled: (enabled: boolean) => void;
+  generateCursorTrajectoryFromZooms: () => void;
 
   // Zoom Clip Management
   addZoomClip: (clip: Omit<ZoomClip, 'id'>) => void;
@@ -161,6 +167,12 @@ const EMPTY_PROJECT: StudioProject = {
     },
     autoHideStationary: true,
     hideAfterSeconds: 2.0,
+  },
+  effects: {
+    motionBlur: true,
+    vignetteIntensity: 0.2,
+    backgroundBlurPx: 0,
+    cameraShake: false,
   },
   subtitles: {
     enabled: true,
@@ -494,9 +506,42 @@ export const useStudioStore = create<StudioState>((set, get) => ({
           ...state.project.canvas,
           background: {
             ...state.project.canvas.background,
+            type: 'mesh_gradient',
             preset,
             colors,
+            customImageUrl: undefined,
           },
+        },
+      },
+    })),
+
+  setCustomBackgroundImage: (file: File | Blob) => {
+    const url = URL.createObjectURL(file);
+    set((state) => ({
+      project: {
+        ...state.project,
+        canvas: {
+          ...state.project.canvas,
+          background: {
+            type: 'custom_image',
+            preset: 'custom',
+            colors: [],
+            animated: false,
+            speed: 0,
+            customImageUrl: url,
+          },
+        },
+      },
+    }));
+  },
+
+  setEffectsConfig: (updates) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        effects: {
+          ...state.project.effects,
+          ...updates,
         },
       },
     })),
@@ -632,6 +677,66 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         cursor: { ...state.project.cursor, motionBlurEnabled },
       },
     })),
+
+  generateCursorTrajectoryFromZooms: () => {
+    const { project } = get();
+    const duration = project.durationSeconds > 0 ? project.durationSeconds : 30.0;
+    const zooms = project.zoomClips;
+
+    const samples: MouseTelemetrySample[] = [];
+    const keypoints: { time: number; x: number; y: number; isClick: boolean }[] = [];
+
+    keypoints.push({ time: 0, x: 0.5, y: 0.5, isClick: false });
+
+    if (zooms.length > 0) {
+      zooms.forEach((zoom) => {
+        const leadIn = Math.max(0.2, zoom.startTime - 0.8);
+        keypoints.push({ time: leadIn, x: zoom.focusTarget.x, y: zoom.focusTarget.y, isClick: false });
+        keypoints.push({ time: zoom.startTime, x: zoom.focusTarget.x, y: zoom.focusTarget.y, isClick: true });
+        keypoints.push({ time: zoom.endTime, x: Math.min(0.9, zoom.focusTarget.x + 0.04), y: Math.min(0.9, zoom.focusTarget.y + 0.03), isClick: false });
+      });
+    } else {
+      keypoints.push({ time: duration * 0.2, x: 0.65, y: 0.38, isClick: true });
+      keypoints.push({ time: duration * 0.5, x: 0.28, y: 0.55, isClick: true });
+      keypoints.push({ time: duration * 0.8, x: 0.72, y: 0.68, isClick: true });
+    }
+
+    keypoints.push({ time: duration, x: 0.5, y: 0.5, isClick: false });
+    keypoints.sort((a, b) => a.time - b.time);
+
+    // Generate interpolated samples every 0.1s
+    const step = 0.1;
+    for (let t = 0; t <= duration; t += step) {
+      const idx = keypoints.findIndex((k) => k.time >= t);
+      if (idx <= 0) {
+        const kp = keypoints[0];
+        samples.push({ timestamp: t, x: kp.x, y: kp.y, isClick: t < 0.2 && kp.isClick });
+      } else {
+        const p0 = keypoints[idx - 1];
+        const p1 = keypoints[idx];
+        const progress = (t - p0.time) / (p1.time - p0.time || 1);
+        // Smooth cubic ease
+        const ease = progress * progress * (3 - 2 * progress);
+        samples.push({
+          timestamp: t,
+          x: p0.x + (p1.x - p0.x) * ease,
+          y: p0.y + (p1.y - p0.y) * ease,
+          isClick: Math.abs(t - p1.time) < 0.15 && p1.isClick,
+        });
+      }
+    }
+
+    set((state) => ({
+      project: {
+        ...state.project,
+        mouseTelemetry: samples,
+        cursor: {
+          ...state.project.cursor,
+          showOverlay: true,
+        },
+      },
+    }));
+  },
 
   addZoomClip: (clipData) =>
     set((state) => {

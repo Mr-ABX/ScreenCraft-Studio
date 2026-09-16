@@ -66,6 +66,12 @@ export const DEMO_PROJECT: StudioProject = {
     autoHideStationary: true,
     hideAfterSeconds: 2.0,
   },
+  effects: {
+    motionBlur: true,
+    vignetteIntensity: 0.25,
+    backgroundBlurPx: 0,
+    cameraShake: false,
+  },
   subtitles: {
     enabled: true,
     fontFamily: 'SF Pro Display',
