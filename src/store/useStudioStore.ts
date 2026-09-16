@@ -7,6 +7,7 @@ import {
   FrameType,
   BackgroundType,
   CursorStyle,
+  CursorMode,
   EffectsConfig,
 } from '../types/project';
 import { extractAudioWaveformPeaks } from '../engine/audioWaveform';
@@ -83,14 +84,19 @@ interface StudioState {
   setZoomClipFocus: (id: string, x: number, y: number) => void;
 
   // Cursor Modifiers
+  setCursorMode: (mode: CursorMode) => void;
   setCursorShowOverlay: (enabled: boolean) => void;
   setCursorStyle: (style: CursorStyle) => void;
   setCursorScale: (scale: number) => void;
   setClickEffectEnabled: (enabled: boolean) => void;
   setMotionBlurEnabled: (enabled: boolean) => void;
+  setMouseTelemetry: (samples: MouseTelemetrySample[]) => void;
+  setManualCursorPosition: (x: number, y: number) => void;
   generateCursorTrajectoryFromZooms: () => void;
 
   // Zoom Clip Management
+  updateActiveZoomFactor: (factor: number) => void;
+  updateActiveZoomFocus: (x: number, y: number) => void;
   addZoomClip: (clip: Omit<ZoomClip, 'id'>) => void;
   updateZoomClip: (id: string, updates: Partial<ZoomClip>) => void;
   deleteZoomClip: (id: string) => void;
@@ -153,6 +159,7 @@ const EMPTY_PROJECT: StudioProject = {
     },
   },
   cursor: {
+    mode: 'styled',
     showOverlay: false,
     style: 'macos_arrow',
     scale: 1.4,
@@ -259,6 +266,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const duration = tempVideo.duration && !isNaN(tempVideo.duration) && tempVideo.duration !== Infinity
       ? tempVideo.duration
       : 30.0;
+    const width = tempVideo.videoWidth || 1920;
+    const height = tempVideo.videoHeight || 1080;
+    const aspectRatio = width / height;
 
     // Extract real audio waveform and timeline filmstrip thumbnails in parallel
     const [peaks, thumbnails] = await Promise.all([
@@ -278,6 +288,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         ...state.project,
         title: filename.replace(/\.[^/.]+$/, ''),
         durationSeconds: duration,
+        videoMetadata: {
+          width,
+          height,
+          aspectRatio,
+          duration,
+        },
         videoClips: [
           {
             id: `video_${Date.now()}`,
@@ -291,7 +307,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         zoomClips: [], // Keep empty by default for user control
         cursor: {
           ...state.project.cursor,
-          showOverlay: false, // Default off for imported videos (baked cursor)
+          mode: 'video', // Default to original video cursor for external imports (no static fake overlay)
+          showOverlay: false,
         },
       },
     }));
@@ -313,6 +330,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const duration = tempVideo.duration && !isNaN(tempVideo.duration) && tempVideo.duration !== Infinity
       ? tempVideo.duration
       : 30.0;
+    const width = tempVideo.videoWidth || 1920;
+    const height = tempVideo.videoHeight || 1080;
+    const aspectRatio = width / height;
 
     const [peaks, thumbnails] = await Promise.all([
       extractAudioWaveformPeaks(file, 200),
@@ -331,6 +351,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         ...state.project,
         title: filename.replace(/\.[^/.]+$/, ''),
         durationSeconds: duration,
+        videoMetadata: {
+          width,
+          height,
+          aspectRatio,
+          duration,
+        },
         mouseTelemetry: telemetry,
         videoClips: [
           {
@@ -345,7 +371,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         zoomClips: [],
         cursor: {
           ...state.project.cursor,
-          showOverlay: true, // Enable vector cursor overlay since telemetry is captured
+          mode: 'styled', // Default to styled vector cursor for in-app recordings
+          showOverlay: true,
         },
       },
     }));
@@ -635,13 +662,75 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       },
     })),
 
+  setCursorMode: (mode) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        cursor: {
+          ...state.project.cursor,
+          mode,
+          showOverlay: mode === 'styled',
+        },
+      },
+    })),
+
   setCursorShowOverlay: (showOverlay) =>
     set((state) => ({
       project: {
         ...state.project,
-        cursor: { ...state.project.cursor, showOverlay },
+        cursor: {
+          ...state.project.cursor,
+          showOverlay,
+          mode: showOverlay ? 'styled' : 'video',
+        },
       },
     })),
+
+  setMouseTelemetry: (samples) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        mouseTelemetry: samples,
+      },
+    })),
+
+  setManualCursorPosition: (x, y) => {
+    const { currentTime, project } = get();
+    const currentSamples = project.mouseTelemetry ? [...project.mouseTelemetry] : [];
+    const normalizedTime = Math.round(currentTime * 10) / 10;
+
+    const existingIdx = currentSamples.findIndex(
+      (s) => Math.abs(s.timestamp - normalizedTime) < 0.2
+    );
+
+    if (existingIdx !== -1) {
+      currentSamples[existingIdx] = {
+        ...currentSamples[existingIdx],
+        x: Math.max(0.02, Math.min(0.98, x)),
+        y: Math.max(0.02, Math.min(0.98, y)),
+      };
+    } else {
+      currentSamples.push({
+        timestamp: normalizedTime,
+        x: Math.max(0.02, Math.min(0.98, x)),
+        y: Math.max(0.02, Math.min(0.98, y)),
+        isClick: false,
+      });
+      currentSamples.sort((a, b) => a.timestamp - b.timestamp);
+    }
+
+    set((state) => ({
+      project: {
+        ...state.project,
+        mouseTelemetry: currentSamples,
+        cursor: {
+          ...state.project.cursor,
+          mode: 'styled',
+          showOverlay: true,
+        },
+      },
+    }));
+  },
 
   setCursorStyle: (style) =>
     set((state) => ({
@@ -736,6 +825,33 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         },
       },
     }));
+  },
+
+  updateActiveZoomFactor: (factor) => {
+    const { project, selectedZoomClipId, currentTime, updateZoomClip } = get();
+    const activeClip =
+      project.zoomClips.find((z) => z.id === selectedZoomClipId) ||
+      project.zoomClips.find((z) => currentTime >= z.startTime && currentTime <= z.endTime);
+
+    if (activeClip) {
+      updateZoomClip(activeClip.id, { zoomFactor: factor });
+    }
+  },
+
+  updateActiveZoomFocus: (x, y) => {
+    const { project, selectedZoomClipId, currentTime, updateZoomClip } = get();
+    const activeClip =
+      project.zoomClips.find((z) => z.id === selectedZoomClipId) ||
+      project.zoomClips.find((z) => currentTime >= z.startTime && currentTime <= z.endTime);
+
+    if (activeClip) {
+      updateZoomClip(activeClip.id, {
+        focusTarget: {
+          x: Math.max(0.05, Math.min(0.95, x)),
+          y: Math.max(0.05, Math.min(0.95, y)),
+        },
+      });
+    }
   },
 
   addZoomClip: (clipData) =>

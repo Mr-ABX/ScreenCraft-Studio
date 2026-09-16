@@ -4,27 +4,52 @@ import { useStudioStore } from '../../store/useStudioStore';
 import { NumberSlider } from '../common/NumberSlider';
 import { ToggleSwitch } from '../common/ToggleSwitch';
 import { SegmentedControl } from '../common/SegmentedControl';
-import { CursorStyle } from '../../types/project';
-import { MousePointer, Sparkles, Activity, EyeOff, Play, Wand2 } from 'lucide-react';
+import { CursorStyle, CursorMode } from '../../types/project';
+import { trackVideoCursor } from '../../engine/videoCursorTracker';
+import { MousePointer, Sparkles, Activity, EyeOff, Play, Wand2, Scan, Loader2, Mouse } from 'lucide-react';
 
 export function CursorCard() {
   const {
     project,
+    videoSourceBlob,
+    setCursorMode,
     setCursorShowOverlay,
     setCursorStyle,
     setCursorScale,
     setClickEffectEnabled,
     setMotionBlurEnabled,
+    setMouseTelemetry,
     generateCursorTrajectoryFromZooms,
   } = useStudioStore();
 
   const { cursor, mouseTelemetry } = project;
+  const currentMode: CursorMode = cursor.mode || (cursor.showOverlay ? 'styled' : 'video');
   const hasTelemetry = mouseTelemetry && mouseTelemetry.length > 0;
   const [testClicking, setTestClicking] = useState(false);
+  const [isTracking, setIsTracking] = useState(false);
+  const [trackingProgress, setTrackingProgress] = useState(0);
 
   const handleTestClick = () => {
     setTestClicking(true);
     setTimeout(() => setTestClicking(false), 450);
+  };
+
+  const handleTrackVideo = async () => {
+    if (!videoSourceBlob) return;
+    setIsTracking(true);
+    setTrackingProgress(0);
+
+    try {
+      const samples = await trackVideoCursor(videoSourceBlob, project.durationSeconds, {
+        onProgress: (p) => setTrackingProgress(Math.round(p * 100)),
+      });
+      setMouseTelemetry(samples);
+      setCursorMode('styled');
+    } catch (err) {
+      console.error('Failed to track cursor in video:', err);
+    } finally {
+      setIsTracking(false);
+    }
   };
 
   return (
@@ -139,27 +164,64 @@ export function CursorCard() {
           </span>
         </div>
 
-        {/* 1-Click Smart Cursor Path Generator */}
-        <button
-          type="button"
-          onClick={generateCursorTrajectoryFromZooms}
-          title="Generates natural smooth mouse movement connecting zoom keyframe focal points"
-          className="w-full py-2 px-3 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-200 border border-indigo-500/40 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-        >
-          <Wand2 className="w-3.5 h-3.5 text-indigo-400" />
-          <span>Generate Smart Path from Zooms</span>
-        </button>
+        {/* Action Buttons: Optical Tracker + Zoom Path Generator */}
+        <div className="grid grid-cols-1 gap-2 pt-1">
+          {videoSourceBlob && (
+            <button
+              type="button"
+              disabled={isTracking}
+              onClick={handleTrackVideo}
+              title="Scans video frames with browser computer vision to detect moving mouse coordinates"
+              className="w-full py-2 px-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-200 border border-emerald-500/40 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            >
+              {isTracking ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                  <span>Tracking Motion... {trackingProgress}%</span>
+                </>
+              ) : (
+                <>
+                  <Scan className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Track Cursor in Video (Optical Vision)</span>
+                </>
+              )}
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={generateCursorTrajectoryFromZooms}
+            title="Generates natural smooth mouse movement connecting zoom keyframe focal points"
+            className="w-full py-2 px-3 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-200 border border-indigo-500/40 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+          >
+            <Wand2 className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Glide Path from Zooms</span>
+          </button>
+        </div>
       </div>
 
-      {/* 3. Main Vector Cursor Overlay Toggle */}
-      <ToggleSwitch
-        label="Vector Cursor Overlay"
-        description="Renders high-DPI vector cursor with animated shockwaves on top of the video"
-        checked={cursor.showOverlay}
-        onChange={setCursorShowOverlay}
-      />
+      {/* 3. Three-Way Cursor Display Mode Switcher */}
+      <div className="space-y-2">
+        <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center justify-between">
+          <span>Cursor Mode</span>
+          <span className="text-[10px] text-zinc-500 font-normal">
+            {currentMode === 'video' ? 'Native Video Mouse' : currentMode === 'styled' ? 'Vector Overlay' : 'Hidden'}
+          </span>
+        </label>
 
-      {cursor.showOverlay ? (
+        <SegmentedControl<CursorMode>
+          size="sm"
+          value={currentMode}
+          onChange={(m) => setCursorMode(m)}
+          options={[
+            { value: 'video', label: 'Original Video' },
+            { value: 'styled', label: 'Styled Vector' },
+            { value: 'hidden', label: 'Hidden' },
+          ]}
+        />
+      </div>
+
+      {currentMode === 'styled' && (
         <div className="space-y-5 pt-1">
           {/* Style Picker */}
           <div className="space-y-2">
@@ -173,6 +235,7 @@ export function CursorCard() {
               onChange={setCursorStyle}
               options={[
                 { value: 'macos_arrow', label: 'macOS' },
+                { value: 'windows_arrow', label: 'Windows' },
                 { value: 'pointer', label: 'Hand' },
                 { value: 'glow_dot', label: 'Glow Dot' },
               ]}
@@ -209,20 +272,29 @@ export function CursorCard() {
               onChange={setMotionBlurEnabled}
             />
 
-            <ToggleSwitch
-              label="Catmull-Rom Path Smoothing"
-              description="Interpolates cursor trajectories with smooth cubic splines"
-              checked={cursor.smoothingEnabled}
-              onChange={() => {}}
-            />
+            <div className="p-2.5 rounded-xl bg-indigo-950/30 border border-indigo-500/20 text-[10px] text-indigo-300 leading-relaxed">
+              💡 <strong>Interactive Placement:</strong> Click anywhere on the video canvas to place or refine the cursor position at the current playhead timestamp.
+            </div>
           </div>
         </div>
-      ) : (
+      )}
+
+      {currentMode === 'video' && (
+        <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-[11px] text-zinc-400 space-y-1">
+          <div className="flex items-center gap-2 font-semibold text-zinc-300">
+            <Mouse className="w-4 h-4 text-zinc-400" />
+            <span>Authentic Screen Recording Mouse</span>
+          </div>
+          <p className="text-[10px] text-zinc-400 leading-relaxed">
+            Displaying the authentic mouse pointer recorded directly into your video pixels. Vector overlay is suppressed to guarantee zero double-cursors.
+          </p>
+        </div>
+      )}
+
+      {currentMode === 'hidden' && (
         <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.05] text-[11px] text-zinc-400 flex items-center gap-2">
           <EyeOff className="w-4 h-4 text-zinc-500 shrink-0" />
-          <span>
-            Vector overlay is off to prevent double-cursor conflicts on uploaded recordings.
-          </span>
+          <span>All synthetic cursor overlays are hidden.</span>
         </div>
       )}
     </div>

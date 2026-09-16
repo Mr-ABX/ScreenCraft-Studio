@@ -50,12 +50,22 @@ export function CanvasCard() {
           value={canvas.aspectRatio}
           onChange={setAspectRatio}
           options={[
-            { value: '16:9', label: '16:9 (Landscape)' },
-            { value: '9:16', label: '9:16 (Shorts)' },
-            { value: '1:1', label: '1:1 (Square)' },
-            { value: '4:5', label: '4:5 (Post)' },
+            { value: 'auto', label: 'Auto (Native)' },
+            { value: '16:9', label: '16:9' },
+            { value: '9:16', label: '9:16' },
+            { value: '1:1', label: '1:1' },
+            { value: '4:5', label: '4:5' },
           ]}
         />
+
+        {project.videoMetadata && (
+          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.06] text-[10px] text-zinc-400">
+            <span>Video Native Dimensions</span>
+            <span className="font-mono text-zinc-200">
+              {project.videoMetadata.width} × {project.videoMetadata.height} ({project.videoMetadata.aspectRatio.toFixed(2)}:1)
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="w-full h-[1px] bg-white/[0.06]" />

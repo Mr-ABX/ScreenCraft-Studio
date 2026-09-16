@@ -4,12 +4,15 @@ export interface RecordingOptions {
   includeWebcam?: boolean;
   includeMic?: boolean;
   includeSystemAudio?: boolean;
+  hideSystemCursor?: boolean;
 }
 
 export interface RecordedMediaResult {
   blob: Blob;
   url: string;
   durationSeconds: number;
+  width?: number;
+  height?: number;
   mouseTelemetry?: MouseTelemetrySample[];
 }
 
@@ -21,6 +24,8 @@ export class ScreenCaptureService {
   private telemetry: MouseTelemetrySample[] = [];
   private isCapturingTelemetry: boolean = false;
   private lastTelemetryTime: number = 0;
+  private recordedWidth: number = 1920;
+  private recordedHeight: number = 1080;
 
   private onPointerMove = (e: MouseEvent) => {
     if (!this.isCapturingTelemetry) return;
@@ -52,13 +57,23 @@ export class ScreenCaptureService {
     this.telemetry = [];
 
     // 1. Capture Display Stream (Screen or Window)
+    // Pass cursor: 'never' if hideSystemCursor is enabled (default) to eliminate double-cursor!
+    const hideCursor = options.hideSystemCursor ?? true;
     const displayStream = await navigator.mediaDevices.getDisplayMedia({
       video: {
         displaySurface: 'monitor',
         frameRate: { ideal: 60, max: 60 },
-      },
+        cursor: hideCursor ? 'never' : 'always',
+      } as any,
       audio: options.includeSystemAudio ?? true,
     });
+
+    const videoTrack = displayStream.getVideoTracks()[0];
+    if (videoTrack) {
+      const settings = videoTrack.getSettings();
+      this.recordedWidth = settings.width || 1920;
+      this.recordedHeight = settings.height || 1080;
+    }
 
     const combinedTracks: MediaStreamTrack[] = [...displayStream.getVideoTracks()];
 
@@ -140,6 +155,8 @@ export class ScreenCaptureService {
           blob,
           url,
           durationSeconds,
+          width: this.recordedWidth,
+          height: this.recordedHeight,
           mouseTelemetry: this.telemetry,
         });
       };

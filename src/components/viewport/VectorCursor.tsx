@@ -54,6 +54,28 @@ export function VectorCursor({
         </motion.svg>
       )}
 
+      {/* High-DPI Vector Windows Arrow Cursor */}
+      {config.style === 'windows_arrow' && (
+        <motion.svg
+          animate={{ scale }}
+          transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className="filter drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]"
+        >
+          <path
+            d="M4 2L4 20L8.5 15.5L12.5 23L15.5 21.5L11.5 14L18 14L4 2Z"
+            fill="white"
+            stroke="black"
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+          />
+        </motion.svg>
+      )}
+
       {/* Pointer Hand Cursor */}
       {config.style === 'pointer' && (
         <motion.svg

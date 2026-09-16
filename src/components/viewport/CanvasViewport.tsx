@@ -24,15 +24,18 @@ export function CanvasViewport() {
     viewportScale,
     videoSourceUrl,
     isDemoMode,
+    activeTab,
     setVideoElement,
     setVideoSource,
     loadDemoProject,
     setRecordModalOpen,
     selectedZoomClipId,
     setZoomClipFocus,
+    setManualCursorPosition,
   } = useStudioStore();
 
   const { canvas, camera, cursor, zoomClips, subtitles } = project;
+  const [isDraggingFocus, setIsDraggingFocus] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -129,22 +132,25 @@ export function CanvasViewport() {
     return () => cancelAnimationFrame(animId);
   }, [isPlaying, currentTime, zoomClips, camera.autoZoomEnabled, advanceClock]);
 
-  // Interactive Click to Reposition Camera Focus Target
+  const videoAspectRatio = project.videoMetadata?.aspectRatio || 16 / 9;
+
+  // Interactive Click to Reposition Camera Focus Target or Cursor
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = (e.clientX - rect.left) / rect.width;
-    const clickY = (e.clientY - rect.top) / rect.height;
+    const clickX = Math.max(0.02, Math.min(0.98, (e.clientX - rect.left) / rect.width));
+    const clickY = Math.max(0.02, Math.min(0.98, (e.clientY - rect.top) / rect.height));
+
+    if (activeTab === 'cursor') {
+      setManualCursorPosition(clickX, clickY);
+      return;
+    }
 
     const targetClip =
       zoomClips.find((z) => currentTime >= z.startTime && currentTime <= z.endTime) ||
       zoomClips.find((z) => z.id === selectedZoomClipId);
 
     if (targetClip) {
-      setZoomClipFocus(
-        targetClip.id,
-        Math.max(0.1, Math.min(0.9, clickX)),
-        Math.max(0.1, Math.min(0.9, clickY))
-      );
+      setZoomClipFocus(targetClip.id, clickX, clickY);
     }
   };
 
@@ -158,7 +164,8 @@ export function CanvasViewport() {
   };
 
   // Aspect ratio styling for the outer canvas
-  const aspectClassMap = {
+  const aspectClassMap: Record<string, string> = {
+    auto: 'max-w-5xl max-h-[85vh]',
     '16:9': 'aspect-video max-w-4xl',
     '9:16': 'aspect-[9/16] max-h-[85vh] max-w-sm',
     '1:1': 'aspect-square max-h-[85vh] max-w-xl',
@@ -229,6 +236,10 @@ export function CanvasViewport() {
       )
     : null;
 
+  const targetClip =
+    zoomClips.find((z) => currentTime >= z.startTime && currentTime <= z.endTime) ||
+    zoomClips.find((z) => z.id === selectedZoomClipId);
+
   const isProjectEmpty = project.durationSeconds <= 0 && !videoSourceUrl && !isDemoMode;
 
   return (
@@ -241,7 +252,10 @@ export function CanvasViewport() {
       <motion.div
         animate={{ scale: viewportScale }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className={`relative w-full ${aspectClassMap[canvas.aspectRatio]} rounded-3xl overflow-hidden shadow-[0_32px_96px_rgba(0,0,0,0.85)] border border-white/[0.08] flex items-center justify-center transition-all duration-300`}
+        style={{
+          aspectRatio: canvas.aspectRatio === 'auto' ? `${videoAspectRatio}` : undefined,
+        }}
+        className={`relative w-full ${aspectClassMap[canvas.aspectRatio] || aspectClassMap['16:9']} rounded-3xl overflow-hidden shadow-[0_32px_96px_rgba(0,0,0,0.85)] border border-white/[0.08] flex items-center justify-center transition-all duration-300`}
       >
         {/* Background Mesh / Wallpaper / Custom Gradient */}
         <div
@@ -340,7 +354,11 @@ export function CanvasViewport() {
               }}
               className="w-full h-full relative z-20 flex items-center justify-center"
             >
-              <WindowChrome frame={canvas.frame} cornerRadiusPx={canvas.cornerRadiusPx}>
+              <WindowChrome
+                frame={canvas.frame}
+                cornerRadiusPx={canvas.cornerRadiusPx}
+                aspectRatio={videoAspectRatio}
+              >
                 {/* Scalable Inner Content with Spring Camera Zoom & Pan */}
                 <div
                   ref={containerRef}
@@ -358,7 +376,7 @@ export function CanvasViewport() {
                       src={videoSourceUrl}
                       playsInline
                       onEnded={() => useStudioStore.getState().setIsPlaying(false)}
-                      className="w-full h-full object-contain pointer-events-none"
+                      className="w-full h-full object-cover pointer-events-none"
                     />
                   ) : (
                     /* Demo Showcase Visuals */
@@ -399,14 +417,65 @@ export function CanvasViewport() {
                     </div>
                   )}
 
+                  {/* Interactive On-Canvas Draggable Zoom Focal Reticle */}
+                  {targetClip && camera.autoZoomEnabled && (
+                    <div
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        setIsDraggingFocus(true);
+                        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                      }}
+                      onPointerMove={(e) => {
+                        if (!isDraggingFocus || !containerRef.current) return;
+                        const rect = containerRef.current.getBoundingClientRect();
+                        const x = Math.max(0.05, Math.min(0.95, (e.clientX - rect.left) / rect.width));
+                        const y = Math.max(0.05, Math.min(0.95, (e.clientY - rect.top) / rect.height));
+                        setZoomClipFocus(targetClip.id, Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000);
+                      }}
+                      onPointerUp={(e) => {
+                        setIsDraggingFocus(false);
+                        try {
+                          (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+                        } catch {}
+                      }}
+                      style={{
+                        left: `${targetClip.focusTarget.x * 100}%`,
+                        top: `${targetClip.focusTarget.y * 100}%`,
+                      }}
+                      className="absolute -translate-x-1/2 -translate-y-1/2 z-30 cursor-grab active:cursor-grabbing group/reticle select-none"
+                    >
+                      <div className="relative flex items-center justify-center">
+                        {/* Concentric Glow Target */}
+                        <div
+                          className={`w-9 h-9 rounded-full border-2 ${
+                            isDraggingFocus
+                              ? 'border-amber-400 bg-amber-400/20 scale-125'
+                              : 'border-indigo-400/90 bg-indigo-500/30'
+                          } backdrop-blur-sm shadow-[0_0_16px_rgba(99,102,241,0.6)] flex items-center justify-center transition-transform duration-150`}
+                        >
+                          <div className="w-2 h-2 rounded-full bg-white shadow-sm" />
+                        </div>
+
+                        {/* Crosshair guidelines */}
+                        <div className="absolute w-12 h-[1.5px] bg-white/50 pointer-events-none" />
+                        <div className="absolute h-12 w-[1.5px] bg-white/50 pointer-events-none" />
+
+                        {/* Badge */}
+                        <div className="absolute -top-7 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-black/85 backdrop-blur-md border border-white/20 text-[9px] font-bold text-white whitespace-nowrap shadow-xl pointer-events-none">
+                          Zoom {targetClip.zoomFactor.toFixed(1)}x • ({Math.round(targetClip.focusTarget.x * 100)}%, {Math.round(targetClip.focusTarget.y * 100)}%)
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Focus Target Crosshair Hint on Hover */}
                   <div className="absolute top-3 right-3 z-30 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-[10px] font-medium text-zinc-300 opacity-0 group-hover/canvas:opacity-100 transition-opacity flex items-center gap-1.5 pointer-events-none">
                     <Crosshair className="w-3 h-3 text-indigo-400" />
-                    <span>Click to change Zoom Focal Point</span>
+                    <span>{targetClip ? 'Drag Reticle or Click to change Zoom Focus' : 'Click to Set Focus'}</span>
                   </div>
 
-                  {/* Vector Cursor Overlay */}
-                  {cursor.showOverlay && (
+                  {/* Vector Cursor Overlay: only when in 'styled' mode */}
+                  {(cursor.mode === 'styled' || (cursor.mode !== 'video' && cursor.mode !== 'hidden' && cursor.showOverlay)) && (
                     <VectorCursor
                       config={cursor}
                       position={cursorPosition}

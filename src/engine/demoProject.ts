@@ -51,6 +51,7 @@ export const DEMO_PROJECT: StudioProject = {
     },
   },
   cursor: {
+    mode: 'styled',
     showOverlay: true,
     style: 'macos_arrow',
     scale: 1.4,
@@ -155,4 +156,10 @@ export const DEMO_PROJECT: StudioProject = {
     { timestamp: 27.0, x: 0.75, y: 0.70, isClick: true },
     { timestamp: 30.0, x: 0.50, y: 0.50, isClick: false },
   ],
+  videoMetadata: {
+    width: 1920,
+    height: 1080,
+    aspectRatio: 16 / 9,
+    duration: 30.0,
+  },
 };

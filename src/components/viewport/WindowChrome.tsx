@@ -6,10 +6,11 @@ import { FrameConfig } from '../../types/project';
 interface WindowChromeProps {
   frame: FrameConfig;
   cornerRadiusPx?: number;
+  aspectRatio?: number;
   children: React.ReactNode;
 }
 
-export function WindowChrome({ frame, cornerRadiusPx = 24, children }: WindowChromeProps) {
+export function WindowChrome({ frame, cornerRadiusPx = 24, aspectRatio, children }: WindowChromeProps) {
   const isFrameless = frame.type === 'frameless';
 
   return (
@@ -17,7 +18,7 @@ export function WindowChrome({ frame, cornerRadiusPx = 24, children }: WindowChr
       style={{
         borderRadius: `${cornerRadiusPx}px`,
       }}
-      className={`w-full h-full flex flex-col overflow-hidden bg-[#121216] transition-all duration-200 ${
+      className={`relative max-w-full max-h-full flex flex-col overflow-hidden bg-[#121216] transition-all duration-200 ${
         isFrameless
           ? 'border border-white/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.6)]'
           : 'border border-white/[0.12] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_24px_64px_rgba(0,0,0,0.65)]'
@@ -63,7 +64,10 @@ export function WindowChrome({ frame, cornerRadiusPx = 24, children }: WindowChr
       )}
 
       {/* Screen Video / App Content Container */}
-      <div className="relative flex-1 w-full overflow-hidden bg-black flex items-center justify-center min-h-0">
+      <div
+        style={aspectRatio ? { aspectRatio: `${aspectRatio}` } : undefined}
+        className="relative flex-1 w-full overflow-hidden bg-black flex items-center justify-center min-h-0"
+      >
         {children}
       </div>
     </div>

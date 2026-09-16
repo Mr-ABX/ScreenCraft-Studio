@@ -1,10 +1,12 @@
-export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:5';
+export type AspectRatio = 'auto' | '16:9' | '9:16' | '1:1' | '4:5';
 
 export type BackgroundType = 'mesh_gradient' | 'solid' | 'transparent' | 'custom_image';
 
 export type FrameType = 'safari' | 'macos_clean' | 'arc' | 'frameless';
 
 export type CursorStyle = 'macos_arrow' | 'windows_arrow' | 'pointer' | 'glow_dot';
+
+export type CursorMode = 'video' | 'styled' | 'hidden';
 
 export type ClickHaloStyle = 'expanding_halo' | 'pulsing_dot' | 'none';
 
@@ -63,7 +65,8 @@ export interface CameraConfig {
 }
 
 export interface CursorConfig {
-  showOverlay: boolean; // True to render vector cursor (on for telemetry/demo, off for baked video)
+  mode: CursorMode; // 'video' (original video mouse), 'styled' (high-DPI vector overlay), 'hidden'
+  showOverlay: boolean; // True to render vector cursor
   style: CursorStyle;
   scale: number; // 1.0 to 2.5
   smoothingEnabled: boolean;
@@ -159,4 +162,10 @@ export interface StudioProject {
   subtitleClips: SubtitleClip[];
   audioConfig: AudioTrackConfig;
   mouseTelemetry?: MouseTelemetrySample[];
+  videoMetadata?: {
+    width: number;
+    height: number;
+    aspectRatio: number;
+    duration: number;
+  };
 }

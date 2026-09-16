@@ -10,6 +10,7 @@ import {
   X,
   Square,
   Sparkles,
+  MousePointer,
 } from 'lucide-react';
 
 export function RecordModal() {
@@ -19,6 +20,7 @@ export function RecordModal() {
   const [webcamEnabled, setWebcamEnabled] = useState(false);
   const [micEnabled, setMicEnabled] = useState(true);
   const [systemAudioEnabled, setSystemAudioEnabled] = useState(true);
+  const [hideSystemCursor, setHideSystemCursor] = useState(true);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
@@ -49,6 +51,7 @@ export function RecordModal() {
         includeMic: micEnabled,
         includeSystemAudio: systemAudioEnabled,
         includeWebcam: webcamEnabled,
+        hideSystemCursor: hideSystemCursor,
       });
 
       setIsRecording(true);
@@ -210,7 +213,7 @@ export function RecordModal() {
                 Inputs & Overlays
               </label>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <button
                   type="button"
                   onClick={() => setWebcamEnabled(!webcamEnabled)}
@@ -247,7 +250,21 @@ export function RecordModal() {
                   }`}
                 >
                   <Volume2 className="w-4 h-4" />
-                  <span className="text-[11px] font-medium">System Audio</span>
+                  <span className="text-[11px] font-medium">Audio</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setHideSystemCursor(!hideSystemCursor)}
+                  title="Hides system cursor to eliminate double-cursor and enables high-DPI vector cursor"
+                  className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+                    hideSystemCursor
+                      ? 'border-indigo-500/60 bg-indigo-500/15 text-indigo-300'
+                      : 'border-white/[0.08] bg-white/[0.03] text-zinc-500'
+                  }`}
+                >
+                  <MousePointer className="w-4 h-4" />
+                  <span className="text-[11px] font-medium">Vector Cursor</span>
                 </button>
               </div>
             </div>
