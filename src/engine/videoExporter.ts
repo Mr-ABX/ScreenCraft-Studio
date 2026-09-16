@@ -138,14 +138,35 @@ export async function renderAndExportVideo(
     ctx.clearRect(0, 0, targetWidth, targetHeight);
     drawStudioBackground(ctx, targetWidth, targetHeight, project.canvas.background.preset);
 
-    // 3. Draw Window & Scaled Video with Spring Camera
-    const padding = (project.canvas.paddingPx / 1000) * targetWidth;
-    const cornerRadius = (project.canvas.cornerRadiusPx / 1000) * targetWidth;
+    // 3. Draw Window & Scaled Video with Proportional OpenScreen Constraint Math
+    const isFrameless = project.canvas.frame.type === 'frameless';
+    const headerHeight = isFrameless ? 0 : Math.round(targetHeight * 0.042);
 
-    const frameX = padding;
-    const frameY = padding;
-    const frameWidth = targetWidth - padding * 2;
-    const frameHeight = targetHeight - padding * 2;
+    const scaleFactor = targetWidth / 1280;
+    const paddingPx = project.canvas.paddingPx * scaleFactor;
+    const cornerRadius = project.canvas.cornerRadiusPx * scaleFactor;
+
+    const availW = Math.max(20, targetWidth - paddingPx * 2);
+    const availH = Math.max(20, targetHeight - paddingPx * 2);
+
+    const videoAspect =
+      videoElement.videoWidth && videoElement.videoHeight
+        ? videoElement.videoWidth / videoElement.videoHeight
+        : project.videoMetadata?.aspectRatio || 16 / 9;
+
+    const maxVidH = Math.max(10, availH - headerHeight);
+    let vidW = availW;
+    let vidH = vidW / videoAspect;
+
+    if (vidH > maxVidH) {
+      vidH = maxVidH;
+      vidW = vidH * videoAspect;
+    }
+
+    const frameWidth = Math.round(vidW);
+    const frameHeight = Math.round(vidH + headerHeight);
+    const frameX = Math.round((targetWidth - frameWidth) / 2);
+    const frameY = Math.round((targetHeight - frameHeight) / 2);
 
     // Contact Shadow
     ctx.save();
@@ -168,8 +189,9 @@ export async function renderAndExportVideo(
     ctx.restore();
 
     // Safari / macOS Chrome Header
-    const headerHeight = Math.round(targetHeight * 0.045);
-    drawChromeHeader(ctx, frameX, frameY, frameWidth, headerHeight, project.canvas.frame);
+    if (!isFrameless) {
+      drawChromeHeader(ctx, frameX, frameY, frameWidth, headerHeight, project.canvas.frame);
+    }
 
     // 4. Draw Video Content inside window clip
     const videoContentY = frameY + headerHeight;
@@ -195,10 +217,39 @@ export async function renderAndExportVideo(
     }
 
     // 5. Draw Vector Cursor & Click Ripple
-    if (activeZoom) {
-      const cursorScreenX = offsetX + activeZoom.focusTarget.x * scaledW;
-      const cursorScreenY = offsetY + activeZoom.focusTarget.y * scaledH;
-      drawVectorCursor(ctx, cursorScreenX, cursorScreenY, project.cursor.scale);
+    const shouldDrawCursor =
+      project.cursor.mode === 'styled' ||
+      (project.cursor.mode !== 'video' &&
+        project.cursor.mode !== 'hidden' &&
+        project.cursor.showOverlay);
+
+    if (shouldDrawCursor) {
+      let curX = focusX;
+      let curY = focusY;
+
+      if (project.mouseTelemetry && project.mouseTelemetry.length > 0) {
+        const samples = project.mouseTelemetry;
+        const idx = samples.findIndex((s) => s.timestamp >= currentTime);
+        if (idx === -1) {
+          const last = samples[samples.length - 1];
+          curX = last.x;
+          curY = last.y;
+        } else if (idx === 0) {
+          curX = samples[0].x;
+          curY = samples[0].y;
+        } else {
+          const prev = samples[idx - 1];
+          const next = samples[idx];
+          const span = next.timestamp - prev.timestamp;
+          const progress = span > 0 ? (currentTime - prev.timestamp) / span : 0;
+          curX = prev.x + (next.x - prev.x) * progress;
+          curY = prev.y + (next.y - prev.y) * progress;
+        }
+      }
+
+      const cursorScreenX = offsetX + curX * scaledW;
+      const cursorScreenY = offsetY + curY * scaledH;
+      drawVectorCursor(ctx, cursorScreenX, cursorScreenY, (project.cursor.scale || 1.4) * scaleFactor);
     }
 
     ctx.restore();
@@ -255,7 +306,7 @@ function drawStudioBackground(
     0,
     w * 0.5,
     h * 0.5,
-    Math.max(w, h) * 0.8
+    Math.max(w, h) * 0.85
   );
 
   if (preset === 'obsidian_studio') {
@@ -266,8 +317,30 @@ function drawStudioBackground(
     grad.addColorStop(0, '#ea580c');
     grad.addColorStop(0.5, '#701a75');
     grad.addColorStop(1, '#0f172a');
+  } else if (preset === 'midnight_velvet') {
+    grad.addColorStop(0, '#312e81');
+    grad.addColorStop(0.6, '#1e1b4b');
+    grad.addColorStop(1, '#09090b');
+  } else if (preset === 'cosmic_nebula') {
+    grad.addColorStop(0, '#ec4899');
+    grad.addColorStop(0.45, '#6366f1');
+    grad.addColorStop(1, '#0f172a');
+  } else if (preset === 'emerald_isle') {
+    grad.addColorStop(0, '#065f46');
+    grad.addColorStop(0.4, '#0f766e');
+    grad.addColorStop(1, '#042f2e');
+  } else if (preset === 'sonoma_waves') {
+    grad.addColorStop(0, '#fb923c');
+    grad.addColorStop(0.35, '#c026d3');
+    grad.addColorStop(0.7, '#4338ca');
+    grad.addColorStop(1, '#050507');
+  } else if (preset === 'sequoia_mist') {
+    grad.addColorStop(0, '#38bdf8');
+    grad.addColorStop(0.3, '#0284c7');
+    grad.addColorStop(0.7, '#1e293b');
+    grad.addColorStop(1, '#050507');
   } else {
-    // Apple Aurora
+    // Apple Aurora (default)
     grad.addColorStop(0, '#1e1b4b');
     grad.addColorStop(0.4, '#581c87');
     grad.addColorStop(0.8, '#0d9488');

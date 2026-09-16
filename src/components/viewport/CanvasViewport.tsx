@@ -39,6 +39,35 @@ export function CanvasViewport() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasOuterRef = useRef<HTMLDivElement>(null);
+
+  const [canvasDimensions, setCanvasDimensions] = useState<{ width: number; height: number }>({
+    width: 0,
+    height: 0,
+  });
+
+  // Observe outer canvas dimensions for OpenScreen proportional fitting
+  useEffect(() => {
+    const el = canvasOuterRef.current;
+    if (!el) return;
+
+    const updateSize = () => {
+      if (el.clientWidth > 0 && el.clientHeight > 0) {
+        setCanvasDimensions({
+          width: el.clientWidth,
+          height: el.clientHeight,
+        });
+      }
+    };
+
+    updateSize();
+    const observer = new ResizeObserver(() => {
+      updateSize();
+    });
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [canvas.aspectRatio, viewportScale]);
 
   // Spring camera engine instance
   const cameraEngineRef = useRef<SpringCameraEngine>(
@@ -242,6 +271,31 @@ export function CanvasViewport() {
 
   const isProjectEmpty = project.durationSeconds <= 0 && !videoSourceUrl && !isDemoMode;
 
+  // Proportional constraint fitting (OpenScreen non-cropping geometry)
+  const isFrameless = canvas.frame.type === 'frameless';
+  const titleBarHeight = isFrameless ? 0 : 40;
+  const padding = canvas.paddingPx;
+
+  let frameWidth: number | undefined = undefined;
+  let frameHeight: number | undefined = undefined;
+
+  if (canvasDimensions.width > 0 && canvasDimensions.height > 0) {
+    const availW = Math.max(20, canvasDimensions.width - padding * 2);
+    const availH = Math.max(20, canvasDimensions.height - padding * 2);
+    const maxVidH = Math.max(10, availH - titleBarHeight);
+
+    let vidW = availW;
+    let vidH = vidW / videoAspectRatio;
+
+    if (vidH > maxVidH) {
+      vidH = maxVidH;
+      vidW = vidH * videoAspectRatio;
+    }
+
+    frameWidth = Math.round(vidW);
+    frameHeight = Math.round(vidH + titleBarHeight);
+  }
+
   return (
     <div
       onDragOver={(e) => e.preventDefault()}
@@ -250,6 +304,7 @@ export function CanvasViewport() {
     >
       {/* 1. STABLE STUDIO CANVAS (Aspect Ratio Box & Mesh Background) */}
       <motion.div
+        ref={canvasOuterRef}
         animate={{ scale: viewportScale }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
         style={{
@@ -280,7 +335,6 @@ export function CanvasViewport() {
         <div
           className="relative w-full h-full flex items-center justify-center transition-all duration-300"
           style={{
-            padding: `${canvas.paddingPx}px`,
             perspective: 1200, // 3D Perspective container
           }}
         >
@@ -352,11 +406,13 @@ export function CanvasViewport() {
               style={{
                 transformStyle: 'preserve-3d',
               }}
-              className="w-full h-full relative z-20 flex items-center justify-center"
+              className="relative z-20 flex items-center justify-center"
             >
               <WindowChrome
                 frame={canvas.frame}
                 cornerRadiusPx={canvas.cornerRadiusPx}
+                width={frameWidth}
+                height={frameHeight}
                 aspectRatio={videoAspectRatio}
               >
                 {/* Scalable Inner Content with Spring Camera Zoom & Pan */}

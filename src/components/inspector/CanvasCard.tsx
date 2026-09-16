@@ -106,16 +106,40 @@ export function CanvasCard() {
 
       {/* 3. Non-Cropping Padding & Corner Radius */}
       <div className="space-y-3">
-        <NumberSlider
-          label="Canvas Padding (Outer Spacing)"
-          value={canvas.paddingPx}
-          min={0}
-          max={140}
-          step={4}
-          unit="px"
-          defaultValue={48}
-          onChange={setCanvasPadding}
-        />
+        <div>
+          <NumberSlider
+            label="Canvas Padding (Outer Spacing)"
+            value={canvas.paddingPx}
+            min={0}
+            max={140}
+            step={4}
+            unit="px"
+            defaultValue={48}
+            onChange={setCanvasPadding}
+          />
+          <div className="flex items-center gap-1.5 mt-2">
+            {[
+              { label: '0px (Edge)', value: 0 },
+              { label: '24px', value: 24 },
+              { label: '48px', value: 48 },
+              { label: '80px', value: 80 },
+              { label: '112px', value: 112 },
+            ].map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => setCanvasPadding(p.value)}
+                className={`flex-1 py-1 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${
+                  canvas.paddingPx === p.value
+                    ? 'bg-indigo-600/30 text-indigo-300 border-indigo-500/40 font-semibold'
+                    : 'bg-white/[0.03] text-zinc-400 border-white/[0.06] hover:bg-white/[0.08] hover:text-white'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <NumberSlider
           label="Window Corner Radius"
