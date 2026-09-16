@@ -1,9 +1,9 @@
 import { ZoomClip, MouseTelemetrySample } from '../types/project';
 
 /**
- * Smart Auto-Zoom Generation Engine
- * 1. Analyzes real recorded mouse telemetry clicks to place zooms on actual user actions.
- * 2. Or generates intelligent pacing across the timeline for uploaded video files.
+ * OpenScreen & Screen Studio Smart Auto-Zoom Engine
+ * 1. Clusters real recorded clicks and dwell interactions into smooth zoom segments.
+ * 2. Or generates rhythmically paced focus keyframes for uploaded video files.
  */
 
 export interface AutoZoomOptions {
@@ -17,38 +17,111 @@ export interface AutoZoomOptions {
 export function generateAutoZoomsFromTelemetry(
   telemetry: MouseTelemetrySample[],
   durationSeconds: number,
-  zoomFactor: number = 2.0
+  zoomFactor: number = 2.0,
+  zoomIntensity: 'subtle' | 'standard' | 'dynamic' = 'standard'
 ): ZoomClip[] {
-  if (!telemetry || telemetry.length === 0 || durationSeconds < 3) return [];
+  if (!telemetry || telemetry.length === 0 || durationSeconds < 2) return [];
 
-  const clickSamples = telemetry.filter((t) => t.isClick && t.timestamp < durationSeconds - 1.0);
+  const clickSamples = telemetry.filter(
+    (t) => t.isClick && t.timestamp < durationSeconds - 0.5
+  );
+
   if (clickSamples.length === 0) return [];
 
+  const factor =
+    zoomIntensity === 'subtle'
+      ? Math.min(1.6, zoomFactor)
+      : zoomIntensity === 'dynamic'
+      ? Math.max(2.4, zoomFactor)
+      : zoomFactor;
+
+  // 1. Cluster nearby clicks within 1.5 seconds into single zoom episodes
+  const clusters: Array<{
+    startTime: number;
+    endTime: number;
+    focalX: number;
+    focalY: number;
+    clicks: MouseTelemetrySample[];
+  }> = [];
+
+  let currentCluster: MouseTelemetrySample[] = [];
+
+  for (let i = 0; i < clickSamples.length; i++) {
+    const sample = clickSamples[i];
+    if (currentCluster.length === 0) {
+      currentCluster.push(sample);
+    } else {
+      const prev = currentCluster[currentCluster.length - 1];
+      if (sample.timestamp - prev.timestamp <= 1.8) {
+        currentCluster.push(sample);
+      } else {
+        // Finalize cluster
+        const avgX =
+          currentCluster.reduce((sum, c) => sum + c.x, 0) /
+          currentCluster.length;
+        const avgY =
+          currentCluster.reduce((sum, c) => sum + c.y, 0) /
+          currentCluster.length;
+        clusters.push({
+          startTime: currentCluster[0].timestamp,
+          endTime: currentCluster[currentCluster.length - 1].timestamp,
+          focalX: avgX,
+          focalY: avgY,
+          clicks: [...currentCluster],
+        });
+        currentCluster = [sample];
+      }
+    }
+  }
+
+  if (currentCluster.length > 0) {
+    const avgX =
+      currentCluster.reduce((sum, c) => sum + c.x, 0) / currentCluster.length;
+    const avgY =
+      currentCluster.reduce((sum, c) => sum + c.y, 0) / currentCluster.length;
+    clusters.push({
+      startTime: currentCluster[0].timestamp,
+      endTime: currentCluster[currentCluster.length - 1].timestamp,
+      focalX: avgX,
+      focalY: avgY,
+      clicks: [...currentCluster],
+    });
+  }
+
+  // 2. Build non-overlapping Zoom Clips with natural pre-roll and dwell times
   const clips: ZoomClip[] = [];
   let lastEndTime = 0;
 
-  for (let i = 0; i < clickSamples.length; i++) {
-    const click = clickSamples[i];
-    const startTime = Math.max(0.5, click.timestamp - 0.6);
-    const endTime = Math.min(durationSeconds - 0.2, startTime + 4.2);
+  for (let i = 0; i < clusters.length; i++) {
+    const c = clusters[i];
+    const preRoll = 0.4;
+    const dwell = 2.4;
 
-    // Prevent overlap with previous zoom block
-    if (startTime < lastEndTime + 1.5) {
+    const start = Math.max(0.2, c.startTime - preRoll);
+    const end = Math.min(durationSeconds - 0.2, c.endTime + dwell);
+
+    // Prevent collision with preceding clip
+    if (start < lastEndTime + 0.8) {
+      continue;
+    }
+
+    // Must have at least 1.8s minimum length
+    if (end - start < 1.6) {
       continue;
     }
 
     clips.push({
       id: `zoom_telemetry_${Date.now()}_${i}`,
-      startTime: Math.round(startTime * 10) / 10,
-      endTime: Math.round(endTime * 10) / 10,
-      zoomFactor,
+      startTime: Math.round(start * 10) / 10,
+      endTime: Math.round(end * 10) / 10,
+      zoomFactor: factor,
       focusTarget: {
-        x: Math.max(0.15, Math.min(0.85, click.x)),
-        y: Math.max(0.15, Math.min(0.85, click.y)),
+        x: Math.max(0.12, Math.min(0.88, Math.round(c.focalX * 100) / 100)),
+        y: Math.max(0.12, Math.min(0.88, Math.round(c.focalY * 100) / 100)),
       },
     });
 
-    lastEndTime = endTime;
+    lastEndTime = end;
   }
 
   return clips;
@@ -63,45 +136,51 @@ export function generateSmartAutoZooms(options: AutoZoomOptions): ZoomClip[] {
     defaultZoomFactor = 2.0,
   } = options;
 
-  if (durationSeconds < 4) return [];
+  if (durationSeconds < 3) return [];
 
-  // 1. If telemetry is present with clicks, use real click targets!
+  // 1. If telemetry is present with clicks, use action-clustering engine!
   if (telemetry && telemetry.length > 0) {
     const telemetryZooms = generateAutoZoomsFromTelemetry(
       telemetry,
       durationSeconds,
-      defaultZoomFactor
+      defaultZoomFactor,
+      zoomIntensity
     );
     if (telemetryZooms.length > 0) {
       return telemetryZooms;
     }
   }
 
-  // 2. Otherwise generate paced focal points
+  // 2. Otherwise generate paced focal zones for uploaded videos
   const zoomFactors = {
-    subtle: [1.6, 1.8, 1.7],
-    standard: [2.0, 2.3, 2.1, 2.5],
-    dynamic: [2.2, 2.8, 2.4, 3.0],
+    subtle: [1.5, 1.6, 1.5, 1.7],
+    standard: [1.9, 2.2, 2.0, 2.4],
+    dynamic: [2.4, 2.8, 2.5, 3.0],
   }[zoomIntensity];
 
   const focalPoints = [
-    { x: 0.65, y: 0.38 }, // Main Hero / Center-Right
-    { x: 0.28, y: 0.55 }, // Left Nav / Form Input
-    { x: 0.72, y: 0.68 }, // Bottom-Right CTA Button
-    { x: 0.50, y: 0.32 }, // Top Search / Header
-    { x: 0.35, y: 0.45 }, // Code Block / Text Area
+    { x: 0.65, y: 0.38 }, // Hero Visual / Center-Right
+    { x: 0.28, y: 0.52 }, // Form / Left Navigation
+    { x: 0.72, y: 0.68 }, // CTA Button / Action Area
+    { x: 0.50, y: 0.32 }, // Header Bar / Search
+    { x: 0.35, y: 0.45 }, // Code Block / Text Focus
   ];
 
-  const segmentDuration = frequency === 'frequent' ? 5.0 : frequency === 'sparse' ? 10.0 : 7.0;
-  const gapBetweenZooms = frequency === 'frequent' ? 3.0 : frequency === 'sparse' ? 8.0 : 5.0;
+  const segmentDuration =
+    frequency === 'frequent' ? 4.5 : frequency === 'sparse' ? 9.0 : 6.0;
+  const gapBetweenZooms =
+    frequency === 'frequent' ? 2.5 : frequency === 'sparse' ? 6.5 : 4.0;
 
   const clips: ZoomClip[] = [];
-  let currentTime = Math.min(2.5, durationSeconds * 0.08);
+  let currentTime = Math.min(2.0, durationSeconds * 0.08);
 
   let index = 0;
-  while (currentTime + 3.0 < durationSeconds) {
-    const clipLength = Math.min(segmentDuration, durationSeconds - currentTime - 1.0);
-    if (clipLength < 2.5) break;
+  while (currentTime + 2.5 < durationSeconds) {
+    const clipLength = Math.min(
+      segmentDuration,
+      durationSeconds - currentTime - 0.8
+    );
+    if (clipLength < 2.0) break;
 
     const zoomFactor = zoomFactors[index % zoomFactors.length];
     const focusTarget = focalPoints[index % focalPoints.length];

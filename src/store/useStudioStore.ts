@@ -59,7 +59,10 @@ interface StudioState {
   setSelectedZoomClipId: (id: string | null) => void;
 
   // Smart Auto-Zoom
-  suggestSmartAutoZooms: () => void;
+  suggestSmartAutoZooms: (options?: {
+    zoomIntensity?: 'subtle' | 'standard' | 'dynamic';
+    frequency?: 'sparse' | 'normal' | 'frequent';
+  }) => void;
 
   // Project Modifiers
   setProjectTitle: (title: string) => void;
@@ -89,6 +92,8 @@ interface StudioState {
   setCursorStyle: (style: CursorStyle) => void;
   setCursorScale: (scale: number) => void;
   setClickEffectEnabled: (enabled: boolean) => void;
+  setClickEffectColor: (color: string) => void;
+  setAutoHideStationary: (enabled: boolean, hideAfterSeconds?: number) => void;
   setMotionBlurEnabled: (enabled: boolean) => void;
   setMouseTelemetry: (samples: MouseTelemetrySample[]) => void;
   setManualCursorPosition: (x: number, y: number) => void;
@@ -378,13 +383,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     }));
   },
 
-  suggestSmartAutoZooms: () => {
+  suggestSmartAutoZooms: (options) => {
     const { project } = get();
     if (project.durationSeconds <= 0) return;
 
     const smartZooms = generateSmartAutoZooms({
       durationSeconds: project.durationSeconds,
-      zoomIntensity: 'standard',
+      zoomIntensity: options?.zoomIntensity || 'standard',
+      frequency: options?.frequency || 'normal',
       telemetry: project.mouseTelemetry,
       defaultZoomFactor: project.camera.defaultZoomFactor,
     });
@@ -755,6 +761,29 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         cursor: {
           ...state.project.cursor,
           clickEffect: { ...state.project.cursor.clickEffect, enabled },
+        },
+      },
+    })),
+
+  setClickEffectColor: (color) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        cursor: {
+          ...state.project.cursor,
+          clickEffect: { ...state.project.cursor.clickEffect, color },
+        },
+      },
+    })),
+
+  setAutoHideStationary: (autoHideStationary, hideAfterSeconds) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        cursor: {
+          ...state.project.cursor,
+          autoHideStationary,
+          ...(hideAfterSeconds !== undefined ? { hideAfterSeconds } : {}),
         },
       },
     })),

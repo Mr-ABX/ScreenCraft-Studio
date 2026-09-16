@@ -227,6 +227,7 @@ export async function renderAndExportVideo(
       let curX = focusX;
       let curY = focusY;
 
+      let isClicking = false;
       if (project.mouseTelemetry && project.mouseTelemetry.length > 0) {
         const samples = project.mouseTelemetry;
         const idx = samples.findIndex((s) => s.timestamp >= currentTime);
@@ -234,9 +235,11 @@ export async function renderAndExportVideo(
           const last = samples[samples.length - 1];
           curX = last.x;
           curY = last.y;
+          isClicking = last.isClick;
         } else if (idx === 0) {
           curX = samples[0].x;
           curY = samples[0].y;
+          isClicking = samples[0].isClick;
         } else {
           const prev = samples[idx - 1];
           const next = samples[idx];
@@ -244,12 +247,21 @@ export async function renderAndExportVideo(
           const progress = span > 0 ? (currentTime - prev.timestamp) / span : 0;
           curX = prev.x + (next.x - prev.x) * progress;
           curY = prev.y + (next.y - prev.y) * progress;
+          isClicking = prev.isClick || next.isClick;
         }
       }
 
       const cursorScreenX = offsetX + curX * scaledW;
       const cursorScreenY = offsetY + curY * scaledH;
-      drawVectorCursor(ctx, cursorScreenX, cursorScreenY, (project.cursor.scale || 1.4) * scaleFactor);
+      drawVectorCursor(
+        ctx,
+        cursorScreenX,
+        cursorScreenY,
+        (project.cursor.scale || 1.4) * scaleFactor,
+        project.cursor.style,
+        isClicking,
+        project.cursor.clickEffect?.color || '#6366f1'
+      );
     }
 
     ctx.restore();
@@ -431,24 +443,94 @@ function drawVectorCursor(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  scale: number
+  scale: number,
+  style: StudioProject['cursor']['style'] = 'macos_arrow',
+  isClicking: boolean = false,
+  haloColor: string = '#6366f1'
 ) {
   ctx.save();
   ctx.translate(x, y);
+
+  // Click shockwave ripple
+  if (isClicking) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, 0, 18 * scale, 0, Math.PI * 2);
+    ctx.strokeStyle = haloColor;
+    ctx.lineWidth = 2 * scale;
+    ctx.fillStyle = `${haloColor}33`;
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
   ctx.scale(scale, scale);
 
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(8, 20);
-  ctx.lineTo(12, 12);
-  ctx.lineTo(20, 9);
-  ctx.closePath();
-
-  ctx.fillStyle = '#000000';
-  ctx.fill();
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = '#FFFFFF';
-  ctx.stroke();
+  if (style === 'macos_white') {
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(8, 20);
+    ctx.lineTo(12, 12);
+    ctx.lineTo(20, 9);
+    ctx.closePath();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#111115';
+    ctx.stroke();
+  } else if (style === 'windows_arrow') {
+    ctx.beginPath();
+    ctx.moveTo(4, 2);
+    ctx.lineTo(4, 20);
+    ctx.lineTo(8.5, 15.5);
+    ctx.lineTo(12.5, 23);
+    ctx.lineTo(15.5, 21.5);
+    ctx.lineTo(11.5, 14);
+    ctx.lineTo(18, 14);
+    ctx.closePath();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = '#000000';
+    ctx.stroke();
+  } else if (style === 'precision_cross') {
+    ctx.beginPath();
+    ctx.arc(12, 12, 3, 0, Math.PI * 2);
+    ctx.fillStyle = haloColor;
+    ctx.fill();
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1.5;
+    ctx.moveTo(12, 2);
+    ctx.lineTo(12, 8);
+    ctx.moveTo(12, 16);
+    ctx.lineTo(12, 22);
+    ctx.moveTo(2, 12);
+    ctx.lineTo(8, 12);
+    ctx.moveTo(16, 12);
+    ctx.lineTo(22, 12);
+    ctx.stroke();
+  } else if (style === 'glow_dot') {
+    ctx.beginPath();
+    ctx.arc(0, 0, 5, 0, Math.PI * 2);
+    ctx.fillStyle = haloColor;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.stroke();
+  } else {
+    // macOS Dark default
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(8, 20);
+    ctx.lineTo(12, 12);
+    ctx.lineTo(20, 9);
+    ctx.closePath();
+    ctx.fillStyle = '#111115';
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.stroke();
+  }
 
   ctx.restore();
 }

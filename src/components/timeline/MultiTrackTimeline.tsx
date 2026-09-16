@@ -74,7 +74,7 @@ export function MultiTrackTimeline() {
           {/* Magic Auto-Zoom Button */}
           <button
             type="button"
-            onClick={suggestSmartAutoZooms}
+            onClick={() => suggestSmartAutoZooms()}
             title="Auto-generate intelligent zoom keyframes for the full video"
             className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-lg text-amber-200 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 transition-colors cursor-pointer"
           >

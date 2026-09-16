@@ -424,7 +424,9 @@ export function CanvasViewport() {
                     transformOrigin: 'center center',
                     transition: 'transform 0.05s linear',
                   }}
-                  className="relative w-full h-full bg-[#0b0c10] flex items-center justify-center overflow-hidden cursor-crosshair group/canvas min-h-0"
+                  className={`relative w-full h-full bg-[#0b0c10] flex items-center justify-center overflow-hidden min-h-0 ${
+                    activeTab === 'cursor' || activeTab === 'zoom' ? 'cursor-crosshair' : 'cursor-default'
+                  }`}
                 >
                   {videoSourceUrl ? (
                     <video
@@ -472,63 +474,6 @@ export function CanvasViewport() {
                       </div>
                     </div>
                   )}
-
-                  {/* Interactive On-Canvas Draggable Zoom Focal Reticle */}
-                  {targetClip && camera.autoZoomEnabled && (
-                    <div
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        setIsDraggingFocus(true);
-                        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                      }}
-                      onPointerMove={(e) => {
-                        if (!isDraggingFocus || !containerRef.current) return;
-                        const rect = containerRef.current.getBoundingClientRect();
-                        const x = Math.max(0.05, Math.min(0.95, (e.clientX - rect.left) / rect.width));
-                        const y = Math.max(0.05, Math.min(0.95, (e.clientY - rect.top) / rect.height));
-                        setZoomClipFocus(targetClip.id, Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000);
-                      }}
-                      onPointerUp={(e) => {
-                        setIsDraggingFocus(false);
-                        try {
-                          (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-                        } catch {}
-                      }}
-                      style={{
-                        left: `${targetClip.focusTarget.x * 100}%`,
-                        top: `${targetClip.focusTarget.y * 100}%`,
-                      }}
-                      className="absolute -translate-x-1/2 -translate-y-1/2 z-30 cursor-grab active:cursor-grabbing group/reticle select-none"
-                    >
-                      <div className="relative flex items-center justify-center">
-                        {/* Concentric Glow Target */}
-                        <div
-                          className={`w-9 h-9 rounded-full border-2 ${
-                            isDraggingFocus
-                              ? 'border-amber-400 bg-amber-400/20 scale-125'
-                              : 'border-indigo-400/90 bg-indigo-500/30'
-                          } backdrop-blur-sm shadow-[0_0_16px_rgba(99,102,241,0.6)] flex items-center justify-center transition-transform duration-150`}
-                        >
-                          <div className="w-2 h-2 rounded-full bg-white shadow-sm" />
-                        </div>
-
-                        {/* Crosshair guidelines */}
-                        <div className="absolute w-12 h-[1.5px] bg-white/50 pointer-events-none" />
-                        <div className="absolute h-12 w-[1.5px] bg-white/50 pointer-events-none" />
-
-                        {/* Badge */}
-                        <div className="absolute -top-7 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-black/85 backdrop-blur-md border border-white/20 text-[9px] font-bold text-white whitespace-nowrap shadow-xl pointer-events-none">
-                          Zoom {targetClip.zoomFactor.toFixed(1)}x • ({Math.round(targetClip.focusTarget.x * 100)}%, {Math.round(targetClip.focusTarget.y * 100)}%)
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Focus Target Crosshair Hint on Hover */}
-                  <div className="absolute top-3 right-3 z-30 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-[10px] font-medium text-zinc-300 opacity-0 group-hover/canvas:opacity-100 transition-opacity flex items-center gap-1.5 pointer-events-none">
-                    <Crosshair className="w-3 h-3 text-indigo-400" />
-                    <span>{targetClip ? 'Drag Reticle or Click to change Zoom Focus' : 'Click to Set Focus'}</span>
-                  </div>
 
                   {/* Vector Cursor Overlay: only when in 'styled' mode */}
                   {(cursor.mode === 'styled' || (cursor.mode !== 'video' && cursor.mode !== 'hidden' && cursor.showOverlay)) && (

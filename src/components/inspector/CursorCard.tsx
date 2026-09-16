@@ -6,17 +6,30 @@ import { ToggleSwitch } from '../common/ToggleSwitch';
 import { SegmentedControl } from '../common/SegmentedControl';
 import { CursorStyle, CursorMode } from '../../types/project';
 import { trackVideoCursor } from '../../engine/videoCursorTracker';
-import { MousePointer, Sparkles, Activity, EyeOff, Play, Wand2, Scan, Loader2, Mouse } from 'lucide-react';
+import {
+  MousePointer,
+  Sparkles,
+  Activity,
+  EyeOff,
+  Wand2,
+  Scan,
+  Loader2,
+  Mouse,
+  Palette,
+  Eye,
+  Crosshair,
+} from 'lucide-react';
 
 export function CursorCard() {
   const {
     project,
     videoSourceBlob,
     setCursorMode,
-    setCursorShowOverlay,
     setCursorStyle,
     setCursorScale,
     setClickEffectEnabled,
+    setClickEffectColor,
+    setAutoHideStationary,
     setMotionBlurEnabled,
     setMouseTelemetry,
     generateCursorTrajectoryFromZooms,
@@ -28,6 +41,17 @@ export function CursorCard() {
   const [testClicking, setTestClicking] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
   const [trackingProgress, setTrackingProgress] = useState(0);
+
+  const haloColor = cursor.clickEffect?.color || '#6366f1';
+
+  const haloColorPresets = [
+    { label: 'Indigo', color: '#6366f1' },
+    { label: 'Emerald', color: '#10b981' },
+    { label: 'Rose', color: '#f43f5e' },
+    { label: 'Amber', color: '#f59e0b' },
+    { label: 'Cyan', color: '#06b6d4' },
+    { label: 'White', color: '#ffffff' },
+  ];
 
   const handleTestClick = () => {
     setTestClicking(true);
@@ -72,13 +96,18 @@ export function CursorCard() {
           {cursor.clickEffect.enabled && testClicking && (
             <motion.div
               initial={{ scale: 0.2, opacity: 1 }}
-              animate={{ scale: 2.4, opacity: 0 }}
+              animate={{ scale: 2.6, opacity: 0 }}
               transition={{ duration: 0.45, ease: 'easeOut' }}
-              className="absolute w-12 h-12 rounded-full border-2 border-indigo-400/80 bg-indigo-500/25 shadow-[0_0_16px_rgba(99,102,241,0.6)] pointer-events-none"
+              style={{
+                borderColor: haloColor,
+                backgroundColor: `${haloColor}33`,
+                boxShadow: `0 0 20px ${haloColor}99`,
+              }}
+              className="absolute w-12 h-12 rounded-full border-2 pointer-events-none"
             />
           )}
 
-          {/* Cursor Graphic Preview */}
+          {/* Cursor Graphic Preview in Sandbox */}
           <div className="relative z-10 flex flex-col items-center">
             {cursor.style === 'macos_arrow' && (
               <motion.svg
@@ -93,9 +122,51 @@ export function CursorCard() {
               >
                 <path
                   d="M3 3L10.5 21L13.5 13.5L21 10.5L3 3Z"
-                  fill="black"
-                  stroke="white"
+                  fill="#111115"
+                  stroke="#FFFFFF"
                   strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+              </motion.svg>
+            )}
+
+            {cursor.style === 'macos_white' && (
+              <motion.svg
+                animate={{ scale: cursor.scale }}
+                transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className="filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.7)]"
+              >
+                <path
+                  d="M3 3L10.5 21L13.5 13.5L21 10.5L3 3Z"
+                  fill="#FFFFFF"
+                  stroke="#111115"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+              </motion.svg>
+            )}
+
+            {cursor.style === 'windows_arrow' && (
+              <motion.svg
+                animate={{ scale: cursor.scale }}
+                transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className="filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.7)]"
+              >
+                <path
+                  d="M4 2L4 20L8.5 15.5L12.5 23L15.5 21.5L11.5 14L18 14L4 2Z"
+                  fill="#FFFFFF"
+                  stroke="#000000"
+                  strokeWidth="1.4"
                   strokeLinejoin="round"
                 />
               </motion.svg>
@@ -104,6 +175,7 @@ export function CursorCard() {
             {cursor.style === 'pointer' && (
               <motion.svg
                 animate={{ scale: cursor.scale }}
+                transition={{ type: 'spring', stiffness: 350, damping: 25 }}
                 width="28"
                 height="28"
                 viewBox="0 0 24 24"
@@ -113,19 +185,43 @@ export function CursorCard() {
               >
                 <path
                   d="M8 3V13M8 13L4.5 9.5L3 11L8.5 16.5C10 18 11.5 19 13.5 19H17C19.2 19 21 17.2 21 15V9.5C21 8.7 20.3 8 19.5 8C19 8 18.5 8.3 18.2 8.7C17.9 8.3 17.4 8 16.8 8C16.3 8 15.8 8.3 15.5 8.7C15.2 8.3 14.7 8 14.1 8C13.3 8 12.6 8.7 12.6 9.5V11"
-                  stroke="white"
+                  stroke="#FFFFFF"
                   strokeWidth="1.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  fill="black"
+                  fill="#111115"
                 />
+              </motion.svg>
+            )}
+
+            {cursor.style === 'precision_cross' && (
+              <motion.svg
+                animate={{ scale: cursor.scale }}
+                transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className="filter drop-shadow-[0_0_8px_rgba(99,102,241,0.7)]"
+              >
+                <circle cx="12" cy="12" r="2.5" fill={haloColor} stroke="#FFFFFF" strokeWidth="1" />
+                <line x1="12" y1="2" x2="12" y2="8" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="12" y1="16" x2="12" y2="22" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="2" y1="12" x2="8" y2="12" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="16" y1="12" x2="22" y2="12" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" />
               </motion.svg>
             )}
 
             {cursor.style === 'glow_dot' && (
               <motion.div
                 animate={{ scale: cursor.scale }}
-                className="w-5 h-5 rounded-full bg-indigo-500 border-2 border-white shadow-[0_0_16px_rgba(99,102,241,0.9)]"
+                transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+                style={{
+                  backgroundColor: haloColor,
+                  boxShadow: `0 0 16px ${haloColor}`,
+                }}
+                className="w-5 h-5 rounded-full border-2 border-white"
               />
             )}
           </div>
@@ -223,31 +319,43 @@ export function CursorCard() {
 
       {currentMode === 'styled' && (
         <div className="space-y-5 pt-1">
-          {/* Style Picker */}
+          {/* Style Picker (6 OpenScreen Shapes) */}
           <div className="space-y-2">
             <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
-              Cursor Shape
+              Cursor Shape & Theme
             </label>
 
-            <SegmentedControl<CursorStyle>
-              size="sm"
-              value={cursor.style}
-              onChange={setCursorStyle}
-              options={[
-                { value: 'macos_arrow', label: 'macOS' },
-                { value: 'windows_arrow', label: 'Windows' },
-                { value: 'pointer', label: 'Hand' },
-                { value: 'glow_dot', label: 'Glow Dot' },
-              ]}
-            />
+            <div className="grid grid-cols-3 gap-1.5">
+              {[
+                { id: 'macos_arrow', label: 'macOS Dark' },
+                { id: 'macos_white', label: 'macOS Light' },
+                { id: 'windows_arrow', label: 'Windows 11' },
+                { id: 'pointer', label: 'Hand Pointer' },
+                { id: 'precision_cross', label: 'Precision' },
+                { id: 'glow_dot', label: 'Glow Dot' },
+              ].map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setCursorStyle(s.id as CursorStyle)}
+                  className={`py-2 px-2 rounded-xl text-[10px] font-semibold border transition-all cursor-pointer truncate ${
+                    cursor.style === s.id
+                      ? 'bg-indigo-600/30 text-indigo-200 border-indigo-500/50 shadow-sm'
+                      : 'bg-white/[0.04] text-zinc-400 border-white/[0.06] hover:bg-white/[0.08] hover:text-white'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Scale Slider */}
           <NumberSlider
             label="Cursor Scale"
             value={cursor.scale}
-            min={1.0}
-            max={2.5}
+            min={0.8}
+            max={3.0}
             step={0.1}
             unit="x"
             defaultValue={1.4}
@@ -256,7 +364,7 @@ export function CursorCard() {
 
           <div className="w-full h-[1px] bg-white/[0.06]" />
 
-          {/* Effects */}
+          {/* Click Shockwave Halo Controls */}
           <div className="space-y-3">
             <ToggleSwitch
               label="Click Shockwave Halo"
@@ -265,6 +373,32 @@ export function CursorCard() {
               onChange={setClickEffectEnabled}
             />
 
+            {cursor.clickEffect.enabled && (
+              <div className="space-y-1.5 pt-1">
+                <label className="text-[10px] text-zinc-400 font-medium flex items-center gap-1">
+                  <Palette className="w-3 h-3 text-zinc-500" />
+                  <span>Click Ripple Accent Color</span>
+                </label>
+
+                <div className="grid grid-cols-6 gap-1.5">
+                  {haloColorPresets.map((p) => (
+                    <button
+                      key={p.color}
+                      type="button"
+                      onClick={() => setClickEffectColor(p.color)}
+                      style={{ backgroundColor: p.color }}
+                      className={`h-7 rounded-lg transition-transform cursor-pointer flex items-center justify-center ${
+                        haloColor === p.color
+                          ? 'ring-2 ring-white ring-offset-2 ring-offset-black scale-105'
+                          : 'opacity-70 hover:opacity-100'
+                      }`}
+                      title={p.label}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
             <ToggleSwitch
               label="Motion-Adaptive Blur"
               description="Adds velocity blur during fast cursor transitions"
@@ -272,8 +406,15 @@ export function CursorCard() {
               onChange={setMotionBlurEnabled}
             />
 
+            <ToggleSwitch
+              label="Smart Inactivity Auto-Hide"
+              description="Fades out cursor when motionless for over 2 seconds"
+              checked={cursor.autoHideStationary}
+              onChange={(val) => setAutoHideStationary(val, 2.0)}
+            />
+
             <div className="p-2.5 rounded-xl bg-indigo-950/30 border border-indigo-500/20 text-[10px] text-indigo-300 leading-relaxed">
-              💡 <strong>Interactive Placement:</strong> Click anywhere on the video canvas to place or refine the cursor position at the current playhead timestamp.
+              💡 <strong>Interactive Placement:</strong> In Cursor mode, click anywhere on the video canvas to place or refine the cursor position at the current timestamp.
             </div>
           </div>
         </div>

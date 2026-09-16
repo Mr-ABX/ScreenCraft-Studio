@@ -4,7 +4,13 @@ export type BackgroundType = 'mesh_gradient' | 'solid' | 'transparent' | 'custom
 
 export type FrameType = 'safari' | 'macos_clean' | 'arc' | 'frameless';
 
-export type CursorStyle = 'macos_arrow' | 'windows_arrow' | 'pointer' | 'glow_dot';
+export type CursorStyle =
+  | 'macos_arrow'
+  | 'macos_white'
+  | 'windows_arrow'
+  | 'pointer'
+  | 'glow_dot'
+  | 'precision_cross';
 
 export type CursorMode = 'video' | 'styled' | 'hidden';
 
