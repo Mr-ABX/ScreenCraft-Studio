@@ -102,18 +102,69 @@ export function CameraCard() {
           </div>
 
           {/* Magnification / Zoom Scale */}
-          <NumberSlider
-            label="Zoom Magnification"
-            value={activeClip.zoomFactor}
-            min={1.1}
-            max={3.5}
-            step={0.1}
-            unit="x"
-            defaultValue={2.0}
-            onChange={(factor) =>
-              updateZoomClip(activeClip.id, { zoomFactor: factor })
-            }
-          />
+          <div className="space-y-2">
+            <NumberSlider
+              label="Zoom Magnification"
+              value={activeClip.zoomFactor}
+              min={1.1}
+              max={3.5}
+              step={0.05}
+              unit="x"
+              defaultValue={2.0}
+              onChange={(factor) =>
+                updateZoomClip(activeClip.id, { zoomFactor: factor })
+              }
+            />
+
+            {/* Quick Zoom Presets */}
+            <div className="grid grid-cols-6 gap-1">
+              {[1.2, 1.5, 1.8, 2.0, 2.5, 3.0].map((preset) => {
+                const isSelected = Math.abs(activeClip.zoomFactor - preset) < 0.04;
+                return (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() =>
+                      updateZoomClip(activeClip.id, { zoomFactor: preset })
+                    }
+                    className={`py-1 rounded-md text-[10px] font-mono font-bold transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'bg-white/[0.04] text-zinc-400 hover:text-white hover:bg-white/[0.08]'
+                    }`}
+                  >
+                    {preset}x
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Start / End Timing Adjusters */}
+          <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/[0.06]">
+            <NumberSlider
+              label="Start Time"
+              value={activeClip.startTime}
+              min={0}
+              max={Math.max(0, activeClip.endTime - 0.4)}
+              step={0.1}
+              unit="s"
+              onChange={(startTime) =>
+                updateZoomClip(activeClip.id, { startTime })
+              }
+            />
+            <NumberSlider
+              label="End Time"
+              value={activeClip.endTime}
+              min={activeClip.startTime + 0.4}
+              max={project.durationSeconds > 0 ? project.durationSeconds : 300}
+              step={0.1}
+              unit="s"
+              onChange={(endTime) =>
+                updateZoomClip(activeClip.id, { endTime })
+              }
+            />
+          </div>
 
           {/* 2D Interactive Focus Touchpad & 3x3 Focus Zones */}
           <div className="space-y-2 pt-1">

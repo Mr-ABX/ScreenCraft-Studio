@@ -87,8 +87,21 @@ export function CanvasViewport() {
       setVideoElement(video);
       // Synchronize video time with store currentTime
       const currentStoreTime = useStudioStore.getState().currentTime;
-      if (Math.abs(video.currentTime - currentStoreTime) > 0.05) {
-        video.currentTime = currentStoreTime;
+      const clips = useStudioStore.getState().project.videoClips;
+      const activeClip =
+        clips.find(
+          (c) =>
+            currentStoreTime >= c.timelineStart &&
+            currentStoreTime <= c.timelineStart + c.duration
+        ) || clips[0];
+      const targetSourceTime = activeClip
+        ? activeClip.sourceStart +
+          (currentStoreTime - activeClip.timelineStart) *
+            (activeClip.playbackRate || 1.0)
+        : currentStoreTime;
+
+      if (Math.abs(video.currentTime - targetSourceTime) > 0.05) {
+        video.currentTime = targetSourceTime;
       }
     }
     return () => {

@@ -105,7 +105,22 @@ export async function renderAndExportVideo(
 
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
     const currentTime = frameIndex * dt;
-    videoElement.currentTime = currentTime;
+
+    // Map master timeline time to active video clip source offset
+    const activeVideoClip =
+      project.videoClips.find(
+        (c) =>
+          currentTime >= c.timelineStart &&
+          currentTime < c.timelineStart + c.duration
+      ) || project.videoClips[project.videoClips.length - 1];
+
+    const targetSourceTime = activeVideoClip
+      ? activeVideoClip.sourceStart +
+        (currentTime - activeVideoClip.timelineStart) *
+          (activeVideoClip.playbackRate || 1.0)
+      : currentTime;
+
+    videoElement.currentTime = Math.max(0, targetSourceTime);
 
     // Wait for frame seek
     await new Promise<void>((res) => {

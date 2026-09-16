@@ -4,6 +4,7 @@ import {
   ActiveToolTab,
   AspectRatio,
   ZoomClip,
+  VideoClip,
   FrameType,
   BackgroundType,
   CursorStyle,
@@ -42,6 +43,7 @@ interface StudioState {
   playbackRate: number;
   viewportScale: number;
   selectedZoomClipId: string | null;
+  selectedVideoClipId: string | null;
 
   // Modals
   isRecordModalOpen: boolean;
@@ -57,6 +59,16 @@ interface StudioState {
   setPlaybackRate: (rate: number) => void;
   setViewportScale: (scale: number) => void;
   setSelectedZoomClipId: (id: string | null) => void;
+  setSelectedVideoClipId: (id: string | null) => void;
+
+  // Timeline Video & Zoom Clip Editing Actions (Split, Trim, Duplicate, Resize)
+  splitAtPlayhead: (splitTime?: number) => void;
+  trimClipHead: (clipId?: string, newStartTime?: number) => void;
+  trimClipTail: (clipId?: string, newEndTime?: number) => void;
+  updateVideoClip: (id: string, updates: Partial<VideoClip>) => void;
+  deleteVideoClip: (id: string) => void;
+  duplicateClip: (id?: string) => void;
+  adjustZoomScale: (delta: number) => void;
 
   // Smart Auto-Zoom
   suggestSmartAutoZooms: (options?: {
@@ -409,6 +421,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   playbackRate: 1.0,
   viewportScale: 1.0,
   selectedZoomClipId: null,
+  selectedVideoClipId: null,
 
   isRecordModalOpen: false,
   isExportModalOpen: false,
@@ -424,7 +437,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     if (videoElement) {
       if (nextPlaying) {
         if (currentTime >= project.durationSeconds - 0.1) {
-          videoElement.currentTime = 0;
+          const firstClip = project.videoClips[0];
+          videoElement.currentTime = firstClip ? firstClip.sourceStart : 0;
           set({ currentTime: 0 });
         }
         videoElement.play().catch(() => {});
@@ -451,8 +465,21 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   seek: (time) => {
     const boundedTime = Math.max(0, Math.min(time, get().project.durationSeconds));
-    const { videoElement } = get();
-    if (videoElement) {
+    const { videoElement, project } = get();
+    if (videoElement && project.videoClips.length > 0) {
+      const activeClip =
+        project.videoClips.find(
+          (c) => boundedTime >= c.timelineStart && boundedTime <= c.timelineStart + c.duration
+        ) || project.videoClips[project.videoClips.length - 1];
+
+      if (activeClip) {
+        const sourceTarget =
+          activeClip.sourceStart + (boundedTime - activeClip.timelineStart) * (activeClip.playbackRate || 1.0);
+        videoElement.currentTime = sourceTarget;
+      } else {
+        videoElement.currentTime = boundedTime;
+      }
+    } else if (videoElement) {
       videoElement.currentTime = boundedTime;
     }
     set({ currentTime: boundedTime });
@@ -462,26 +489,31 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const { isPlaying, currentTime, playbackRate, project, videoElement } = get();
     if (!isPlaying || project.durationSeconds <= 0) return;
 
-    // If native video element exists, it is the master clock. Do not advance synthetically.
-    if (videoElement) {
-      const vidTime = videoElement.currentTime;
-      if (vidTime >= project.durationSeconds || videoElement.ended) {
-        set({ currentTime: project.durationSeconds, isPlaying: false });
-        videoElement.pause();
-      } else {
-        set({ currentTime: vidTime });
-      }
-      return;
-    }
-
-    // Fallback clock for demo showcase (no real video element)
     const nextTime = currentTime + dt * playbackRate;
 
     if (nextTime >= project.durationSeconds) {
       set({ currentTime: project.durationSeconds, isPlaying: false });
-    } else {
-      set({ currentTime: nextTime });
+      if (videoElement) videoElement.pause();
+      return;
     }
+
+    // Sync native video element if present
+    if (videoElement && project.videoClips.length > 0) {
+      const activeClip =
+        project.videoClips.find(
+          (c) => nextTime >= c.timelineStart && nextTime < c.timelineStart + c.duration
+        ) || project.videoClips[project.videoClips.length - 1];
+
+      if (activeClip) {
+        const sourceTarget =
+          activeClip.sourceStart + (nextTime - activeClip.timelineStart) * (activeClip.playbackRate || 1.0);
+        if (Math.abs(videoElement.currentTime - sourceTarget) > 0.15) {
+          videoElement.currentTime = sourceTarget;
+        }
+      }
+    }
+
+    set({ currentTime: nextTime });
   },
 
   setPlaybackRate: (rate) => {
@@ -492,6 +524,299 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   setViewportScale: (scale) => set({ viewportScale: scale }),
   setSelectedZoomClipId: (id) => set({ selectedZoomClipId: id }),
+  setSelectedVideoClipId: (id) => set({ selectedVideoClipId: id }),
+
+  // Timeline Video & Zoom Clip Editing Actions
+  splitAtPlayhead: (splitTime) => {
+    const { currentTime, project, selectedVideoClipId, selectedZoomClipId } = get();
+    const t = splitTime !== undefined ? splitTime : currentTime;
+    let videoClipsChanged = false;
+    let zoomClipsChanged = false;
+
+    let newVideoClips = [...project.videoClips];
+    let newZoomClips = [...project.zoomClips];
+
+    // 1. Split Video Clip
+    const targetVideoClip = selectedVideoClipId
+      ? newVideoClips.find((c) => c.id === selectedVideoClipId)
+      : newVideoClips.find(
+          (c) => t > c.timelineStart + 0.05 && t < c.timelineStart + c.duration - 0.05
+        );
+
+    if (
+      targetVideoClip &&
+      t > targetVideoClip.timelineStart + 0.05 &&
+      t < targetVideoClip.timelineStart + targetVideoClip.duration - 0.05
+    ) {
+      const leftDuration = t - targetVideoClip.timelineStart;
+      const rightDuration = targetVideoClip.duration - leftDuration;
+      const rate = targetVideoClip.playbackRate || 1.0;
+
+      const clipA: VideoClip = {
+        ...targetVideoClip,
+        duration: leftDuration,
+      };
+
+      const clipB: VideoClip = {
+        ...targetVideoClip,
+        id: `video_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        timelineStart: t,
+        sourceStart: targetVideoClip.sourceStart + leftDuration * rate,
+        duration: rightDuration,
+      };
+
+      const idx = newVideoClips.findIndex((c) => c.id === targetVideoClip.id);
+      if (idx !== -1) {
+        newVideoClips.splice(idx, 1, clipA, clipB);
+        videoClipsChanged = true;
+      }
+    }
+
+    // 2. Split Zoom Clip
+    const targetZoomClip = selectedZoomClipId
+      ? newZoomClips.find((z) => z.id === selectedZoomClipId)
+      : newZoomClips.find((z) => t > z.startTime + 0.1 && t < z.endTime - 0.1);
+
+    if (
+      targetZoomClip &&
+      t > targetZoomClip.startTime + 0.1 &&
+      t < targetZoomClip.endTime - 0.1
+    ) {
+      const zoomA: ZoomClip = {
+        ...targetZoomClip,
+        endTime: t,
+      };
+
+      const zoomB: ZoomClip = {
+        ...targetZoomClip,
+        id: `zoom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        startTime: t,
+      };
+
+      const zIdx = newZoomClips.findIndex((z) => z.id === targetZoomClip.id);
+      if (zIdx !== -1) {
+        newZoomClips.splice(zIdx, 1, zoomA, zoomB);
+        zoomClipsChanged = true;
+      }
+    }
+
+    if (videoClipsChanged || zoomClipsChanged) {
+      set((state) => ({
+        project: {
+          ...state.project,
+          videoClips: newVideoClips,
+          zoomClips: newZoomClips,
+        },
+      }));
+    }
+  },
+
+  trimClipHead: (clipId, newStartTime) => {
+    const { currentTime, project, selectedVideoClipId, selectedZoomClipId } = get();
+    const t = newStartTime !== undefined ? newStartTime : currentTime;
+
+    // Video Clip
+    const targetVideoId = clipId || selectedVideoClipId;
+    const videoClip =
+      project.videoClips.find((c) => c.id === targetVideoId) ||
+      project.videoClips.find((c) => t > c.timelineStart && t < c.timelineStart + c.duration);
+
+    if (
+      videoClip &&
+      t > videoClip.timelineStart &&
+      t < videoClip.timelineStart + videoClip.duration - 0.1
+    ) {
+      const delta = t - videoClip.timelineStart;
+      const rate = videoClip.playbackRate || 1.0;
+      const updatedClips = project.videoClips.map((c) =>
+        c.id === videoClip.id
+          ? {
+              ...c,
+              timelineStart: t,
+              sourceStart: c.sourceStart + delta * rate,
+              duration: c.duration - delta,
+            }
+          : c
+      );
+      set((state) => ({
+        project: { ...state.project, videoClips: updatedClips },
+      }));
+      return;
+    }
+
+    // Zoom Clip
+    const targetZoomId = clipId || selectedZoomClipId;
+    const zoomClip =
+      project.zoomClips.find((z) => z.id === targetZoomId) ||
+      project.zoomClips.find((z) => t > z.startTime && t < z.endTime);
+
+    if (zoomClip && t > zoomClip.startTime && t < zoomClip.endTime - 0.2) {
+      const updatedZooms = project.zoomClips.map((z) =>
+        z.id === zoomClip.id ? { ...z, startTime: t } : z
+      );
+      set((state) => ({
+        project: { ...state.project, zoomClips: updatedZooms },
+      }));
+    }
+  },
+
+  trimClipTail: (clipId, newEndTime) => {
+    const { currentTime, project, selectedVideoClipId, selectedZoomClipId } = get();
+    const t = newEndTime !== undefined ? newEndTime : currentTime;
+
+    // Video Clip
+    const targetVideoId = clipId || selectedVideoClipId;
+    const videoClip =
+      project.videoClips.find((c) => c.id === targetVideoId) ||
+      project.videoClips.find((c) => t > c.timelineStart && t < c.timelineStart + c.duration);
+
+    if (
+      videoClip &&
+      t > videoClip.timelineStart + 0.1 &&
+      t < videoClip.timelineStart + videoClip.duration
+    ) {
+      const newDuration = t - videoClip.timelineStart;
+      const updatedClips = project.videoClips.map((c) =>
+        c.id === videoClip.id ? { ...c, duration: newDuration } : c
+      );
+      const maxEnd = Math.max(
+        ...updatedClips.map((c) => c.timelineStart + c.duration),
+        ...project.zoomClips.map((z) => z.endTime),
+        0
+      );
+      set((state) => ({
+        project: {
+          ...state.project,
+          videoClips: updatedClips,
+          durationSeconds: maxEnd > 0 ? maxEnd : state.project.durationSeconds,
+        },
+      }));
+      return;
+    }
+
+    // Zoom Clip
+    const targetZoomId = clipId || selectedZoomClipId;
+    const zoomClip =
+      project.zoomClips.find((z) => z.id === targetZoomId) ||
+      project.zoomClips.find((z) => t > z.startTime && t < z.endTime);
+
+    if (zoomClip && t > zoomClip.startTime + 0.2) {
+      const updatedZooms = project.zoomClips.map((z) =>
+        z.id === zoomClip.id ? { ...z, endTime: t } : z
+      );
+      set((state) => ({
+        project: { ...state.project, zoomClips: updatedZooms },
+      }));
+    }
+  },
+
+  updateVideoClip: (id, updates) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        videoClips: state.project.videoClips.map((c) =>
+          c.id === id ? { ...c, ...updates } : c
+        ),
+      },
+    })),
+
+  deleteVideoClip: (id) =>
+    set((state) => {
+      const filtered = state.project.videoClips.filter((c) => c.id !== id);
+      const maxEnd = Math.max(
+        ...filtered.map((c) => c.timelineStart + c.duration),
+        ...state.project.zoomClips.map((z) => z.endTime),
+        0
+      );
+      return {
+        project: {
+          ...state.project,
+          videoClips: filtered,
+          durationSeconds:
+            filtered.length > 0 ? maxEnd : state.project.durationSeconds,
+        },
+        selectedVideoClipId:
+          state.selectedVideoClipId === id ? null : state.selectedVideoClipId,
+      };
+    }),
+
+  duplicateClip: (id) => {
+    const { project, selectedVideoClipId, selectedZoomClipId } = get();
+    // Video Clip
+    const targetVidId = id || selectedVideoClipId;
+    const vidClip = project.videoClips.find((c) => c.id === targetVidId);
+    if (vidClip) {
+      const dupVid: VideoClip = {
+        ...vidClip,
+        id: `video_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        timelineStart: vidClip.timelineStart + vidClip.duration,
+      };
+      const updated = [...project.videoClips, dupVid].sort(
+        (a, b) => a.timelineStart - b.timelineStart
+      );
+      const maxEnd = Math.max(...updated.map((c) => c.timelineStart + c.duration));
+      set((state) => ({
+        project: {
+          ...state.project,
+          videoClips: updated,
+          durationSeconds: Math.max(state.project.durationSeconds, maxEnd),
+        },
+        selectedVideoClipId: dupVid.id,
+      }));
+      return;
+    }
+
+    // Zoom Clip
+    const targetZoomId = id || selectedZoomClipId;
+    const zoomClip = project.zoomClips.find((z) => z.id === targetZoomId);
+    if (zoomClip) {
+      const dur = zoomClip.endTime - zoomClip.startTime;
+      const dupZoom: ZoomClip = {
+        ...zoomClip,
+        id: `zoom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        startTime: zoomClip.endTime,
+        endTime: Math.min(project.durationSeconds, zoomClip.endTime + dur),
+      };
+      set((state) => ({
+        project: {
+          ...state.project,
+          zoomClips: [...state.project.zoomClips, dupZoom].sort(
+            (a, b) => a.startTime - b.startTime
+          ),
+        },
+        selectedZoomClipId: dupZoom.id,
+      }));
+    }
+  },
+
+  adjustZoomScale: (delta) => {
+    const { project, selectedZoomClipId, currentTime, updateZoomClip } = get();
+    const activeClip =
+      project.zoomClips.find((z) => z.id === selectedZoomClipId) ||
+      project.zoomClips.find(
+        (z) => currentTime >= z.startTime && currentTime <= z.endTime
+      );
+
+    if (activeClip) {
+      const newFactor =
+        Math.round(
+          Math.max(1.1, Math.min(4.0, activeClip.zoomFactor + delta)) * 10
+        ) / 10;
+      updateZoomClip(activeClip.id, { zoomFactor: newFactor });
+    } else {
+      const newFactor =
+        Math.round(
+          Math.max(1.1, Math.min(4.0, project.camera.defaultZoomFactor + delta)) *
+            10
+        ) / 10;
+      set((state) => ({
+        project: {
+          ...state.project,
+          camera: { ...state.project.camera, defaultZoomFactor: newFactor },
+        },
+      }));
+    }
+  },
 
   setProjectTitle: (title) =>
     set((state) => ({ project: { ...state.project, title } })),
