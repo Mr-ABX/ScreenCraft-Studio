@@ -10,9 +10,35 @@ export type CursorStyle =
   | 'windows_arrow'
   | 'pointer'
   | 'glow_dot'
-  | 'precision_cross';
+  | 'precision_cross'
+  | 'hello-kitty-watermelon'
+  | 'among-us-sus-knife-and-red-animated'
+  | 'solo-leveling-sung-jinwoo-dark-flames'
+  | 'pokemon-neon-gengar'
+  | 'naruto-akatsuki-cloud-arrow'
+  | 'hollow-knight-and-game-arrow'
+  | 'hollow-knight-nail-sword-and-mask'
+  | 'old-roblox'
+  | 'mickey-mouse-black-hand-inflated-glove'
+  | 'black-pixel'
+  | 'pinky-pixel'
+  | 'pink-glossy-arrow-and-hand-3d'
+  | 'sanrio-gudetama-and-arrow-kawaii'
+  | 'sanrio-kuromi-skull-arrow'
+  | 'christmas-miles-morales'
+  | 'black-and-rainbow-stroke-gradient-animated'
+  | 'spring-gradient'
+  | 'default'
+  | string;
 
 export type CursorMode = 'video' | 'styled' | 'hidden';
+
+export interface TrackVisibilityConfig {
+  zoom: boolean;
+  video: boolean;
+  captions: boolean;
+  audio: boolean;
+}
 
 export type ClickHaloStyle = 'expanding_halo' | 'pulsing_dot' | 'none';
 
@@ -167,6 +193,7 @@ export interface StudioProject {
   videoClips: VideoClip[];
   subtitleClips: SubtitleClip[];
   audioConfig: AudioTrackConfig;
+  trackVisibility?: TrackVisibilityConfig;
   mouseTelemetry?: MouseTelemetrySample[];
   videoMetadata?: {
     width: number;

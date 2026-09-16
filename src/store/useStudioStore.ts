@@ -61,6 +61,18 @@ interface StudioState {
   setSelectedZoomClipId: (id: string | null) => void;
   setSelectedVideoClipId: (id: string | null) => void;
 
+  // History State & Actions
+  undoStack: StudioProject[];
+  redoStack: StudioProject[];
+  canUndo: boolean;
+  canRedo: boolean;
+  pushHistorySnapshot: () => void;
+  undo: () => void;
+  redo: () => void;
+
+  // Track Visibility Toggles
+  toggleTrackVisibility: (track: 'zoom' | 'video' | 'captions' | 'audio') => void;
+
   // Timeline Video & Zoom Clip Editing Actions (Split, Trim, Duplicate, Resize)
   splitAtPlayhead: (splitTime?: number) => void;
   trimClipHead: (clipId?: string, newStartTime?: number) => void;
@@ -216,6 +228,12 @@ const EMPTY_PROJECT: StudioProject = {
     gainDb: 2.5,
     noiseGateEnabled: true,
     autoDuckingEnabled: true,
+  },
+  trackVisibility: {
+    zoom: true,
+    video: true,
+    captions: true,
+    audio: true,
   },
 };
 
@@ -423,6 +441,82 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   selectedZoomClipId: null,
   selectedVideoClipId: null,
 
+  // History State
+  undoStack: [],
+  redoStack: [],
+  canUndo: false,
+  canRedo: false,
+
+  pushHistorySnapshot: () => {
+    const { project, undoStack } = get();
+    const clone = JSON.parse(JSON.stringify(project));
+    const nextStack = [...undoStack.slice(-30), clone];
+    set({
+      undoStack: nextStack,
+      redoStack: [],
+      canUndo: true,
+      canRedo: false,
+    });
+  },
+
+  undo: () => {
+    const { undoStack, redoStack, project } = get();
+    if (undoStack.length === 0) return;
+    const prevProject = undoStack[undoStack.length - 1];
+    const newUndo = undoStack.slice(0, -1);
+    const currentClone = JSON.parse(JSON.stringify(project));
+    set({
+      project: prevProject,
+      undoStack: newUndo,
+      redoStack: [...redoStack, currentClone],
+      canUndo: newUndo.length > 0,
+      canRedo: true,
+    });
+  },
+
+  redo: () => {
+    const { undoStack, redoStack, project } = get();
+    if (redoStack.length === 0) return;
+    const nextProject = redoStack[redoStack.length - 1];
+    const newRedo = redoStack.slice(0, -1);
+    const currentClone = JSON.parse(JSON.stringify(project));
+    set({
+      project: nextProject,
+      redoStack: newRedo,
+      undoStack: [...undoStack, currentClone],
+      canUndo: true,
+      canRedo: newRedo.length > 0,
+    });
+  },
+
+  toggleTrackVisibility: (track) => {
+    get().pushHistorySnapshot();
+    set((state) => {
+      const curr = state.project.trackVisibility || {
+        zoom: true,
+        video: true,
+        captions: true,
+        audio: true,
+      };
+      const updated = { ...curr, [track]: !curr[track] };
+      if (track === 'audio' && state.videoElement) {
+        state.videoElement.muted = !updated.audio;
+      }
+      return {
+        project: {
+          ...state.project,
+          trackVisibility: updated,
+          ...(track === 'captions'
+            ? { subtitles: { ...state.project.subtitles, enabled: updated.captions } }
+            : {}),
+          ...(track === 'zoom'
+            ? { camera: { ...state.project.camera, autoZoomEnabled: updated.zoom } }
+            : {}),
+        },
+      };
+    });
+  },
+
   isRecordModalOpen: false,
   isExportModalOpen: false,
   setRecordModalOpen: (open) => set({ isRecordModalOpen: open }),
@@ -469,13 +563,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     if (videoElement && project.videoClips.length > 0) {
       const activeClip =
         project.videoClips.find(
-          (c) => boundedTime >= c.timelineStart && boundedTime <= c.timelineStart + c.duration
+          (c) => boundedTime >= c.timelineStart && boundedTime < c.timelineStart + c.duration
         ) || project.videoClips[project.videoClips.length - 1];
 
       if (activeClip) {
         const sourceTarget =
-          activeClip.sourceStart + (boundedTime - activeClip.timelineStart) * (activeClip.playbackRate || 1.0);
-        videoElement.currentTime = sourceTarget;
+          activeClip.sourceStart +
+          (boundedTime - activeClip.timelineStart) * (activeClip.playbackRate || 1.0);
+        videoElement.currentTime = Math.max(0, sourceTarget);
       } else {
         videoElement.currentTime = boundedTime;
       }
@@ -489,31 +584,67 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const { isPlaying, currentTime, playbackRate, project, videoElement } = get();
     if (!isPlaying || project.durationSeconds <= 0) return;
 
-    const nextTime = currentTime + dt * playbackRate;
-
-    if (nextTime >= project.durationSeconds) {
-      set({ currentTime: project.durationSeconds, isPlaying: false });
-      if (videoElement) videoElement.pause();
-      return;
-    }
-
-    // Sync native video element if present
+    // 1. If real video element is playing, its hardware clock is the source of truth
     if (videoElement && project.videoClips.length > 0) {
+      if (videoElement.paused && isPlaying) {
+        videoElement.play().catch(() => {});
+      }
+
+      const vTime = videoElement.currentTime;
       const activeClip =
         project.videoClips.find(
-          (c) => nextTime >= c.timelineStart && nextTime < c.timelineStart + c.duration
-        ) || project.videoClips[project.videoClips.length - 1];
+          (c) =>
+            vTime >= c.sourceStart - 0.05 &&
+            vTime < c.sourceStart + c.duration * (c.playbackRate || 1.0)
+        ) ||
+        project.videoClips.find(
+          (c) =>
+            currentTime >= c.timelineStart &&
+            currentTime <= c.timelineStart + c.duration
+        ) ||
+        project.videoClips[0];
 
       if (activeClip) {
-        const sourceTarget =
-          activeClip.sourceStart + (nextTime - activeClip.timelineStart) * (activeClip.playbackRate || 1.0);
-        if (Math.abs(videoElement.currentTime - sourceTarget) > 0.15) {
-          videoElement.currentTime = sourceTarget;
+        const rate = activeClip.playbackRate || 1.0;
+        const clipOffset = (vTime - activeClip.sourceStart) / rate;
+        const currentTimelineTime = activeClip.timelineStart + clipOffset;
+
+        // Clip boundary transition
+        if (
+          clipOffset >= activeClip.duration - 0.03 ||
+          vTime >= activeClip.sourceStart + activeClip.duration * rate - 0.03
+        ) {
+          const activeIdx = project.videoClips.findIndex((c) => c.id === activeClip.id);
+          const nextClip = project.videoClips[activeIdx + 1];
+
+          if (nextClip) {
+            videoElement.currentTime = nextClip.sourceStart;
+            set({ currentTime: nextClip.timelineStart });
+          } else {
+            videoElement.pause();
+            set({ currentTime: project.durationSeconds, isPlaying: false });
+          }
+          return;
         }
+
+        set({
+          currentTime: Math.max(
+            0,
+            Math.min(project.durationSeconds, currentTimelineTime)
+          ),
+        });
+        return;
       }
     }
 
-    set({ currentTime: nextTime });
+    // 2. Synthetic Clock for demo project / audio-only
+    const nextTime = currentTime + dt * playbackRate;
+    if (nextTime >= project.durationSeconds) {
+      set({ currentTime: project.durationSeconds, isPlaying: false });
+      if (videoElement) videoElement.pause();
+    } else {
+      set({ currentTime: nextTime });
+    }
   },
 
   setPlaybackRate: (rate) => {
@@ -528,6 +659,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   // Timeline Video & Zoom Clip Editing Actions
   splitAtPlayhead: (splitTime) => {
+    get().pushHistorySnapshot();
     const { currentTime, project, selectedVideoClipId, selectedZoomClipId } = get();
     const t = splitTime !== undefined ? splitTime : currentTime;
     let videoClipsChanged = false;
@@ -612,6 +744,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
 
   trimClipHead: (clipId, newStartTime) => {
+    get().pushHistorySnapshot();
     const { currentTime, project, selectedVideoClipId, selectedZoomClipId } = get();
     const t = newStartTime !== undefined ? newStartTime : currentTime;
 
@@ -661,6 +794,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
 
   trimClipTail: (clipId, newEndTime) => {
+    get().pushHistorySnapshot();
     const { currentTime, project, selectedVideoClipId, selectedZoomClipId } = get();
     const t = newEndTime !== undefined ? newEndTime : currentTime;
 
@@ -720,7 +854,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       },
     })),
 
-  deleteVideoClip: (id) =>
+  deleteVideoClip: (id) => {
+    get().pushHistorySnapshot();
     set((state) => {
       const filtered = state.project.videoClips.filter((c) => c.id !== id);
       const maxEnd = Math.max(
@@ -738,9 +873,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         selectedVideoClipId:
           state.selectedVideoClipId === id ? null : state.selectedVideoClipId,
       };
-    }),
+    });
+  },
 
   duplicateClip: (id) => {
+    get().pushHistorySnapshot();
     const { project, selectedVideoClipId, selectedZoomClipId } = get();
     // Video Clip
     const targetVidId = id || selectedVideoClipId;

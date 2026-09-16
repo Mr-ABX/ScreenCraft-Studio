@@ -6,6 +6,7 @@ import { ToggleSwitch } from '../common/ToggleSwitch';
 import { SegmentedControl } from '../common/SegmentedControl';
 import { CursorStyle, CursorMode } from '../../types/project';
 import { trackVideoCursor } from '../../engine/videoCursorTracker';
+import { CURSOR_THEMES } from '../../config/cursorThemes';
 import {
   MousePointer,
   Sparkles,
@@ -18,6 +19,7 @@ import {
   Palette,
   Eye,
   Crosshair,
+  Package,
 } from 'lucide-react';
 
 export function CursorCard() {
@@ -41,8 +43,12 @@ export function CursorCard() {
   const [testClicking, setTestClicking] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
   const [trackingProgress, setTrackingProgress] = useState(0);
+  const [cursorCategory, setCursorCategory] = useState<'vector' | 'themed'>('vector');
 
   const haloColor = cursor.clickEffect?.color || '#6366f1';
+  const activeThemedCursor = CURSOR_THEMES.find(
+    (c) => c.id === cursor.style && c.category === 'themed'
+  );
 
   const haloColorPresets = [
     { label: 'Indigo', color: '#6366f1' },
@@ -213,6 +219,21 @@ export function CursorCard() {
               </motion.svg>
             )}
 
+            {/* Themed / Retro Image in Sandbox */}
+            {activeThemedCursor && activeThemedCursor.assetPath && (
+              <motion.div
+                animate={{ scale: cursor.scale }}
+                transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+                className="filter drop-shadow-[0_4px_10px_rgba(0,0,0,0.65)]"
+              >
+                <img
+                  src={activeThemedCursor.assetPath}
+                  alt={activeThemedCursor.name}
+                  className="w-9 h-9 object-contain pointer-events-none select-none"
+                />
+              </motion.div>
+            )}
+
             {cursor.style === 'glow_dot' && (
               <motion.div
                 animate={{ scale: cursor.scale }}
@@ -319,35 +340,94 @@ export function CursorCard() {
 
       {currentMode === 'styled' && (
         <div className="space-y-5 pt-1">
-          {/* Style Picker (6 OpenScreen Shapes) */}
-          <div className="space-y-2">
-            <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
-              Cursor Shape & Theme
-            </label>
+          {/* Style Picker (Vectors + 18 OpenScreen Packs) */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+                Cursor Theme & Pack
+              </label>
 
-            <div className="grid grid-cols-3 gap-1.5">
-              {[
-                { id: 'macos_arrow', label: 'macOS Dark' },
-                { id: 'macos_white', label: 'macOS Light' },
-                { id: 'windows_arrow', label: 'Windows 11' },
-                { id: 'pointer', label: 'Hand Pointer' },
-                { id: 'precision_cross', label: 'Precision' },
-                { id: 'glow_dot', label: 'Glow Dot' },
-              ].map((s) => (
+              <div className="flex items-center gap-1 bg-white/[0.04] p-0.5 rounded-lg border border-white/[0.06]">
                 <button
-                  key={s.id}
                   type="button"
-                  onClick={() => setCursorStyle(s.id as CursorStyle)}
-                  className={`py-2 px-2 rounded-xl text-[10px] font-semibold border transition-all cursor-pointer truncate ${
-                    cursor.style === s.id
-                      ? 'bg-indigo-600/30 text-indigo-200 border-indigo-500/50 shadow-sm'
-                      : 'bg-white/[0.04] text-zinc-400 border-white/[0.06] hover:bg-white/[0.08] hover:text-white'
+                  onClick={() => setCursorCategory('vector')}
+                  className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                    cursorCategory === 'vector'
+                      ? 'bg-indigo-600/40 text-indigo-200 font-semibold'
+                      : 'text-zinc-400 hover:text-white'
                   }`}
                 >
-                  {s.label}
+                  Vectors
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setCursorCategory('themed')}
+                  className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                    cursorCategory === 'themed'
+                      ? 'bg-indigo-600/40 text-indigo-200 font-semibold'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  Themed Packs (18)
+                </button>
+              </div>
             </div>
+
+            {cursorCategory === 'vector' ? (
+              <div className="grid grid-cols-3 gap-1.5">
+                {[
+                  { id: 'macos_arrow', label: 'macOS Dark' },
+                  { id: 'macos_white', label: 'macOS Light' },
+                  { id: 'windows_arrow', label: 'Windows 11' },
+                  { id: 'pointer', label: 'Hand Pointer' },
+                  { id: 'precision_cross', label: 'Precision' },
+                  { id: 'glow_dot', label: 'Glow Dot' },
+                ].map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setCursorStyle(s.id as CursorStyle)}
+                    className={`py-2 px-2 rounded-xl text-[10px] font-semibold border transition-all cursor-pointer truncate ${
+                      cursor.style === s.id
+                        ? 'bg-indigo-600/30 text-indigo-200 border-indigo-500/50 shadow-sm'
+                        : 'bg-white/[0.04] text-zinc-400 border-white/[0.06] hover:bg-white/[0.08] hover:text-white'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-56 overflow-y-auto pr-1">
+                {CURSOR_THEMES.filter((c) => c.category === 'themed').map((theme) => {
+                  const isSelected = cursor.style === theme.id;
+                  return (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      onClick={() => setCursorStyle(theme.id as CursorStyle)}
+                      className={`p-2 rounded-xl border flex flex-col items-center gap-1.5 transition-all cursor-pointer group ${
+                        isSelected
+                          ? 'border-indigo-500 bg-indigo-500/15 shadow-[0_0_12px_rgba(99,102,241,0.25)]'
+                          : 'border-white/[0.06] bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/20'
+                      }`}
+                    >
+                      <div className="w-8 h-8 flex items-center justify-center">
+                        <img
+                          src={theme.assetPath}
+                          alt={theme.name}
+                          className="w-7 h-7 object-contain group-hover:scale-110 transition-transform duration-200"
+                          loading="lazy"
+                        />
+                      </div>
+                      <span className="text-[9px] font-medium text-zinc-300 truncate w-full text-center">
+                        {theme.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Scale Slider */}

@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { CursorConfig } from '../../types/project';
+import { CURSOR_THEMES } from '../../config/cursorThemes';
 
 interface VectorCursorProps {
   config: CursorConfig;
@@ -14,6 +15,9 @@ export function VectorCursor({
 }: VectorCursorProps) {
   const scale = config.scale || 1.4;
   const haloColor = config.clickEffect?.color || '#6366f1';
+  const themedCursor = CURSOR_THEMES.find(
+    (c) => c.id === config.style && c.category === 'themed'
+  );
 
   return (
     <div
@@ -36,6 +40,22 @@ export function VectorCursor({
           }}
           className="absolute -top-5 -left-5 w-14 h-14 rounded-full border-2"
         />
+      )}
+
+      {/* Themed & Retro Cursor Image */}
+      {themedCursor && themedCursor.assetPath && (
+        <motion.div
+          animate={{ scale }}
+          transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+          className="filter drop-shadow-[0_4px_10px_rgba(0,0,0,0.65)] origin-top-left"
+        >
+          <img
+            src={themedCursor.assetPath}
+            alt={themedCursor.name}
+            className="w-8 h-8 object-contain pointer-events-none select-none"
+            draggable={false}
+          />
+        </motion.div>
       )}
 
       {/* 1. macOS Dark Modern Arrow Cursor */}

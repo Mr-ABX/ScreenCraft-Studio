@@ -5,6 +5,7 @@ import { ZoomTrack } from './ZoomTrack';
 import { VideoTrack } from './VideoTrack';
 import { CaptionsTrack } from './CaptionsTrack';
 import { AudioTrack } from './AudioTrack';
+import { TimelineContextMenu, ContextMenuState } from './TimelineContextMenu';
 import {
   Scissors,
   Trash2,
@@ -13,9 +14,12 @@ import {
   Wand2,
   Plus,
   Copy,
-  ChevronLeft,
-  ChevronRight,
-  Sparkles,
+  RotateCcw,
+  RotateCw,
+  Eye,
+  EyeOff,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 
 export function MultiTrackTimeline() {
@@ -29,20 +33,44 @@ export function MultiTrackTimeline() {
     deleteZoomClip,
     deleteVideoClip,
     splitAtPlayhead,
-    trimClipHead,
-    trimClipTail,
     duplicateClip,
     adjustZoomScale,
     suggestSmartAutoZooms,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    toggleTrackVisibility,
   } = useStudioStore();
 
   const [pixelsPerSecond, setPixelsPerSecond] = useState(24);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
+  const headersScrollRef = useRef<HTMLDivElement>(null);
 
-  // Global Keyboard Shortcuts for Timeline Editing (S, Q, W, D, Z, Del)
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    targetType: 'track',
+  });
+
+  const trackVis = project.trackVisibility || {
+    zoom: true,
+    video: true,
+    captions: true,
+    audio: true,
+  };
+
+  // Synchronize vertical scroll between track headers and timeline content
+  const handleVerticalScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (headersScrollRef.current) {
+      headersScrollRef.current.scrollTop = e.currentTarget.scrollTop;
+    }
+  };
+
+  // Global Keyboard Shortcuts (S, D, Z, Del, Cmd+Z, Cmd+Shift+Z)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore when user is actively typing in inputs or textareas
       const target = e.target as HTMLElement;
       if (
         target &&
@@ -53,15 +81,28 @@ export function MultiTrackTimeline() {
         return;
       }
 
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const isCmd = isMac ? e.metaKey : e.ctrlKey;
+
+      if (isCmd && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+        return;
+      }
+
+      if (isCmd && (e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
       if (e.key === 's' || e.key === 'S') {
         e.preventDefault();
         splitAtPlayhead();
-      } else if (e.key === 'q' || e.key === 'Q') {
-        e.preventDefault();
-        trimClipHead();
-      } else if (e.key === 'w' || e.key === 'W') {
-        e.preventDefault();
-        trimClipTail();
       } else if (e.key === 'd' || e.key === 'D') {
         e.preventDefault();
         duplicateClip();
@@ -91,10 +132,10 @@ export function MultiTrackTimeline() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     splitAtPlayhead,
-    trimClipHead,
-    trimClipTail,
     duplicateClip,
     addZoomClip,
+    undo,
+    redo,
     currentTime,
     project.durationSeconds,
     project.camera.defaultZoomFactor,
@@ -114,6 +155,25 @@ export function MultiTrackTimeline() {
     seek(targetTime);
   };
 
+  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const rect = timelineScrollRef.current?.getBoundingClientRect();
+    const clickX = rect ? e.clientX - rect.left : 0;
+    const clickTime = Math.max(
+      0,
+      Math.min(project.durationSeconds, clickX / pixelsPerSecond)
+    );
+
+    setContextMenu({
+      isOpen: true,
+      x: e.clientX,
+      y: e.clientY,
+      targetType: selectedZoomClipId ? 'zoom' : selectedVideoClipId ? 'video' : 'track',
+      clipId: selectedZoomClipId || selectedVideoClipId || undefined,
+      clickTime,
+    });
+  };
+
   const playheadPosition = currentTime * pixelsPerSecond;
 
   if (project.durationSeconds <= 0) {
@@ -131,10 +191,13 @@ export function MultiTrackTimeline() {
     );
 
   return (
-    <div className="h-60 w-full flex flex-col border-t border-white/[0.08] bg-[#09090c]/95 backdrop-blur-2xl select-none z-20">
+    <div
+      onContextMenu={handleContextMenu}
+      className="h-64 w-full flex flex-col border-t border-white/[0.08] bg-[#09090c]/95 backdrop-blur-2xl select-none z-20 relative"
+    >
       {/* Timeline Toolbar Header */}
       <div className="h-10 px-4 flex items-center justify-between border-b border-white/[0.06] bg-white/[0.02]">
-        {/* Left Actions: Split, Trim, Duplicate, Delete, Add Zoom */}
+        {/* Left Actions: Split, Undo, Redo, Duplicate, Delete, Add Zoom */}
         <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Split / Blade Tool */}
           <button
@@ -150,33 +213,39 @@ export function MultiTrackTimeline() {
             </kbd>
           </button>
 
-          {/* Trim Head */}
+          {/* Undo */}
           <button
             type="button"
-            onClick={() => trimClipHead()}
-            title="Trim Start to Playhead (Q)"
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-lg text-zinc-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-colors cursor-pointer"
+            disabled={!canUndo}
+            onClick={() => undo()}
+            title="Undo (Cmd+Z)"
+            className={`flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-lg border transition-colors cursor-pointer ${
+              canUndo
+                ? 'text-zinc-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08]'
+                : 'text-zinc-600 border-transparent opacity-40 cursor-not-allowed'
+            }`}
           >
-            <ChevronLeft className="w-3.5 h-3.5 text-zinc-400" />
-            <span className="hidden md:inline">Trim Head</span>
-            <kbd className="hidden sm:inline px-1 py-0.2 rounded bg-black/40 text-[9px] text-zinc-400 font-mono">
-              Q
-            </kbd>
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Undo</span>
           </button>
 
-          {/* Trim Tail */}
+          {/* Redo */}
           <button
             type="button"
-            onClick={() => trimClipTail()}
-            title="Trim End to Playhead (W)"
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-lg text-zinc-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-colors cursor-pointer"
+            disabled={!canRedo}
+            onClick={() => redo()}
+            title="Redo (Cmd+Shift+Z)"
+            className={`flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-lg border transition-colors cursor-pointer ${
+              canRedo
+                ? 'text-zinc-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08]'
+                : 'text-zinc-600 border-transparent opacity-40 cursor-not-allowed'
+            }`}
           >
-            <span className="hidden md:inline">Trim Tail</span>
-            <ChevronRight className="w-3.5 h-3.5 text-zinc-400" />
-            <kbd className="hidden sm:inline px-1 py-0.2 rounded bg-black/40 text-[9px] text-zinc-400 font-mono">
-              W
-            </kbd>
+            <RotateCw className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Redo</span>
           </button>
+
+          <div className="w-[1px] h-4 bg-white/10 mx-0.5 hidden sm:block" />
 
           {/* Duplicate Clip */}
           <button
@@ -306,38 +375,90 @@ export function MultiTrackTimeline() {
         </div>
       </div>
 
-      {/* Main Multi-Track Area */}
+      {/* Main Multi-Track Area with Synchronized Vertical Scroll */}
       <div className="flex-1 flex overflow-hidden">
         {/* Track Headers (Left Column) */}
-        <div className="w-36 flex flex-col border-r border-white/[0.06] bg-[#070709] py-2 px-3 space-y-2 text-[11px] font-medium text-zinc-400 select-none z-10 flex-shrink-0">
+        <div
+          ref={headersScrollRef}
+          className="w-40 flex flex-col border-r border-white/[0.06] bg-[#070709] py-2 px-2.5 space-y-2 text-[11px] font-medium text-zinc-400 select-none z-10 flex-shrink-0 overflow-y-hidden"
+        >
           <div className="h-6 flex items-center text-[10px] uppercase text-zinc-600 tracking-wider">
             Tracks
           </div>
-          <div className="h-10 flex items-center text-indigo-300 gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-            <span>Camera Zoom</span>
+
+          {/* Track 1: Zoom */}
+          <div className="h-10 flex items-center justify-between px-1 text-indigo-300">
+            <div className="flex items-center gap-1.5 truncate">
+              <span className={`w-1.5 h-1.5 rounded-full ${trackVis.zoom ? 'bg-indigo-400' : 'bg-zinc-600'}`} />
+              <span className={trackVis.zoom ? 'text-indigo-300' : 'text-zinc-500 line-through'}>Camera Zoom</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => toggleTrackVisibility('zoom')}
+              title={trackVis.zoom ? 'Bypass Auto Zoom' : 'Enable Auto Zoom'}
+              className="p-1 text-zinc-500 hover:text-indigo-300 transition-colors cursor-pointer rounded"
+            >
+              {trackVis.zoom ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5 text-zinc-600" />}
+            </button>
           </div>
-          <div className="h-14 flex items-center text-zinc-300 gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
-            <span>Screen Video</span>
+
+          {/* Track 2: Video */}
+          <div className="h-14 flex items-center justify-between px-1 text-zinc-300">
+            <div className="flex items-center gap-1.5 truncate">
+              <span className={`w-1.5 h-1.5 rounded-full ${trackVis.video ? 'bg-zinc-300' : 'bg-zinc-600'}`} />
+              <span className={trackVis.video ? 'text-zinc-200' : 'text-zinc-500 line-through'}>Screen Video</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => toggleTrackVisibility('video')}
+              title={trackVis.video ? 'Hide Video Track' : 'Show Video Track'}
+              className="p-1 text-zinc-500 hover:text-zinc-200 transition-colors cursor-pointer rounded"
+            >
+              {trackVis.video ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5 text-zinc-600" />}
+            </button>
           </div>
+
+          {/* Track 3: Captions */}
           {project.subtitles.enabled && (
-            <div className="h-8 flex items-center text-amber-300 gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-              <span>AI Captions</span>
+            <div className="h-8 flex items-center justify-between px-1 text-amber-300">
+              <div className="flex items-center gap-1.5 truncate">
+                <span className={`w-1.5 h-1.5 rounded-full ${trackVis.captions ? 'bg-amber-400' : 'bg-zinc-600'}`} />
+                <span className={trackVis.captions ? 'text-amber-300' : 'text-zinc-500 line-through'}>AI Captions</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleTrackVisibility('captions')}
+                title={trackVis.captions ? 'Hide Captions' : 'Show Captions'}
+                className="p-1 text-zinc-500 hover:text-amber-300 transition-colors cursor-pointer rounded"
+              >
+                {trackVis.captions ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5 text-zinc-600" />}
+              </button>
             </div>
           )}
-          <div className="h-10 flex items-center text-indigo-300 gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-            <span>Studio Audio</span>
+
+          {/* Track 4: Audio */}
+          <div className="h-10 flex items-center justify-between px-1 text-indigo-300">
+            <div className="flex items-center gap-1.5 truncate">
+              <span className={`w-1.5 h-1.5 rounded-full ${trackVis.audio ? 'bg-indigo-400' : 'bg-zinc-600'}`} />
+              <span className={trackVis.audio ? 'text-indigo-300' : 'text-zinc-500 line-through'}>Studio Audio</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => toggleTrackVisibility('audio')}
+              title={trackVis.audio ? 'Mute Audio Track' : 'Unmute Audio Track'}
+              className="p-1 text-zinc-500 hover:text-indigo-300 transition-colors cursor-pointer rounded"
+            >
+              {trackVis.audio ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5 text-rose-400" />}
+            </button>
           </div>
         </div>
 
-        {/* Scrollable Tracks & Ruler (Right Column) */}
+        {/* Scrollable Tracks & Ruler (Right Column with Vertical + Horizontal Scroll) */}
         <div
           ref={timelineScrollRef}
+          onScroll={handleVerticalScroll}
           onClick={handleTimelineClick}
-          className="flex-1 overflow-x-auto overflow-y-hidden relative select-none cursor-pointer"
+          className="flex-1 overflow-x-auto overflow-y-auto relative select-none cursor-pointer"
         >
           {/* Playhead Indicator (Diamond Needle) */}
           <div
@@ -349,7 +470,7 @@ export function MultiTrackTimeline() {
           </div>
 
           <div
-            className="flex flex-col py-2 px-2 space-y-2"
+            className="flex flex-col py-2 px-2 space-y-2 min-h-full"
             style={{ width: `${project.durationSeconds * pixelsPerSecond + 160}px` }}
           >
             {/* Top Timecode Ruler */}
@@ -359,25 +480,41 @@ export function MultiTrackTimeline() {
             />
 
             {/* Track 1: Zoom Keyframes */}
-            <ZoomTrack pixelsPerSecond={pixelsPerSecond} />
+            <div className={trackVis.zoom ? 'opacity-100' : 'opacity-30 transition-opacity'}>
+              <ZoomTrack pixelsPerSecond={pixelsPerSecond} />
+            </div>
 
             {/* Track 2: Screen Video Clips */}
-            <VideoTrack
-              pixelsPerSecond={pixelsPerSecond}
-              duration={project.durationSeconds}
-            />
+            <div className={trackVis.video ? 'opacity-100' : 'opacity-30 transition-opacity'}>
+              <VideoTrack
+                pixelsPerSecond={pixelsPerSecond}
+                duration={project.durationSeconds}
+              />
+            </div>
 
             {/* Track 3: Captions */}
-            <CaptionsTrack pixelsPerSecond={pixelsPerSecond} />
+            {project.subtitles.enabled && (
+              <div className={trackVis.captions ? 'opacity-100' : 'opacity-30 transition-opacity'}>
+                <CaptionsTrack pixelsPerSecond={pixelsPerSecond} />
+              </div>
+            )}
 
             {/* Track 4: Audio Waveform */}
-            <AudioTrack
-              pixelsPerSecond={pixelsPerSecond}
-              duration={project.durationSeconds}
-            />
+            <div className={trackVis.audio ? 'opacity-100' : 'opacity-30 transition-opacity'}>
+              <AudioTrack
+                pixelsPerSecond={pixelsPerSecond}
+                duration={project.durationSeconds}
+              />
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Floating Context Menu */}
+      <TimelineContextMenu
+        menuState={contextMenu}
+        onClose={() => setContextMenu((c) => ({ ...c, isOpen: false }))}
+      />
     </div>
   );
 }

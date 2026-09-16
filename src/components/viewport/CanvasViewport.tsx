@@ -5,6 +5,7 @@ import { WindowChrome } from './WindowChrome';
 import { VectorCursor } from './VectorCursor';
 import { PlaybackHUD } from './PlaybackHUD';
 import { SpringCameraEngine } from '../../engine/springPhysics';
+import { OPENSCREEN_WALLPAPERS } from '../../config/wallpaperThemes';
 import {
   Sparkles,
   Upload,
@@ -117,10 +118,13 @@ export function CanvasViewport() {
     cameraEngineRef.current.updateConfig(camera.springPhysics);
   }, [camera.springPhysics]);
 
-  // Synchronize native video element play/pause state
+  // Synchronize native video element play/pause and mute state
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+
+    // Track audio mute sync
+    video.muted = project.trackVisibility?.audio === false;
 
     if (isPlaying) {
       if (video.paused) {
@@ -133,7 +137,7 @@ export function CanvasViewport() {
         video.pause();
       }
     }
-  }, [isPlaying]);
+  }, [isPlaying, project.trackVisibility?.audio]);
 
   // 60FPS Master Playback Clock & Spring Physics Loop
   useEffect(() => {
@@ -149,10 +153,13 @@ export function CanvasViewport() {
         advanceClock(dt);
       }
 
-      // 2. Evaluate Spring Physics Camera Position at currentTime
-      const activeZoom = zoomClips.find(
-        (z) => currentTime >= z.startTime && currentTime <= z.endTime
-      );
+      // 2. Evaluate Spring Physics Camera Position at currentTime (respecting Zoom track visibility)
+      const isZoomTrackVisible = project.trackVisibility?.zoom !== false;
+      const activeZoom = isZoomTrackVisible
+        ? zoomClips.find(
+            (z) => currentTime >= z.startTime && currentTime <= z.endTime
+          )
+        : null;
 
       if (camera.autoZoomEnabled && activeZoom) {
         cameraEngineRef.current.setTargets(
@@ -172,7 +179,7 @@ export function CanvasViewport() {
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, [isPlaying, currentTime, zoomClips, camera.autoZoomEnabled, advanceClock]);
+  }, [isPlaying, currentTime, zoomClips, camera.autoZoomEnabled, project.trackVisibility?.zoom, advanceClock]);
 
   const videoAspectRatio = project.videoMetadata?.aspectRatio || 16 / 9;
 
@@ -226,10 +233,20 @@ export function CanvasViewport() {
     sequoia_mist: 'radial-gradient(circle at 30% 20%, #38bdf8 0%, #0284c7 30%, #1e293b 70%, #050507 100%)',
   };
 
+  const matchedWallpaper = OPENSCREEN_WALLPAPERS.find(
+    (w) => w.id === canvas.background.preset
+  );
+
   const currentBgStyle: React.CSSProperties =
     canvas.background.type === 'custom_image' && canvas.background.customImageUrl
       ? {
           backgroundImage: `url(${canvas.background.customImageUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }
+      : matchedWallpaper
+      ? {
+          backgroundImage: `url(${matchedWallpaper.file})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }
@@ -271,8 +288,9 @@ export function CanvasViewport() {
     }
   }
 
-  // Active subtitle
-  const activeSubtitle = subtitles.enabled
+  // Active subtitle (respecting track visibility)
+  const isCaptionsTrackVisible = project.trackVisibility?.captions !== false;
+  const activeSubtitle = subtitles.enabled && isCaptionsTrackVisible
     ? project.subtitleClips.find(
         (s) => currentTime >= s.start && currentTime <= s.end
       )
@@ -283,6 +301,7 @@ export function CanvasViewport() {
     zoomClips.find((z) => z.id === selectedZoomClipId);
 
   const isProjectEmpty = project.durationSeconds <= 0 && !videoSourceUrl && !isDemoMode;
+  const isVideoTrackVisible = project.trackVisibility?.video !== false;
 
   // Proportional constraint fitting (OpenScreen non-cropping geometry)
   const isFrameless = canvas.frame.type === 'frameless';
@@ -311,6 +330,7 @@ export function CanvasViewport() {
 
   return (
     <div
+      id="canvas-viewport-container"
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
       className="relative flex-1 h-full w-full bg-[#050507] overflow-hidden flex items-center justify-center p-8 select-none"
@@ -447,7 +467,9 @@ export function CanvasViewport() {
                       src={videoSourceUrl}
                       playsInline
                       onEnded={() => useStudioStore.getState().setIsPlaying(false)}
-                      className="w-full h-full object-cover pointer-events-none"
+                      className={`w-full h-full object-cover pointer-events-none transition-opacity duration-200 ${
+                        isVideoTrackVisible ? 'opacity-100' : 'opacity-0'
+                      }`}
                     />
                   ) : (
                     /* Demo Showcase Visuals */

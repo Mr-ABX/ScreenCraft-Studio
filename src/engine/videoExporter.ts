@@ -1,5 +1,7 @@
 import { StudioProject } from '../types/project';
 import { SpringCameraEngine } from './springPhysics';
+import { OPENSCREEN_WALLPAPERS } from '../config/wallpaperThemes';
+import { CURSOR_THEMES } from '../config/cursorThemes';
 
 export interface ExportProgress {
   currentFrame: number;
@@ -59,6 +61,51 @@ export async function renderAndExportVideo(
   const fps = 60;
   const totalFrames = Math.floor(duration * fps);
   const dt = 1 / fps;
+
+  // Pre-load wallpaper image if applicable
+  let bgImage: HTMLImageElement | null = null;
+  const matchedWallpaper = OPENSCREEN_WALLPAPERS.find(
+    (w) => w.id === project.canvas.background.preset
+  );
+  const bgImgUrl =
+    project.canvas.background.type === 'custom_image' && project.canvas.background.customImageUrl
+      ? project.canvas.background.customImageUrl
+      : matchedWallpaper
+      ? matchedWallpaper.file
+      : null;
+
+  if (bgImgUrl) {
+    try {
+      bgImage = await new Promise<HTMLImageElement>((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(img);
+        img.src = bgImgUrl;
+      });
+    } catch {
+      bgImage = null;
+    }
+  }
+
+  // Pre-load themed cursor image if applicable
+  let cursorImg: HTMLImageElement | null = null;
+  const matchedCursorTheme = CURSOR_THEMES.find(
+    (c) => c.id === project.cursor.style && c.category === 'themed'
+  );
+  if (matchedCursorTheme?.assetPath) {
+    try {
+      cursorImg = await new Promise<HTMLImageElement>((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(img);
+        img.src = matchedCursorTheme.assetPath!;
+      });
+    } catch {
+      cursorImg = null;
+    }
+  }
 
   // Stream & MediaRecorder for reliable cross-browser export
   const stream = canvas.captureStream(fps);
@@ -149,9 +196,9 @@ export async function renderAndExportVideo(
 
     const { zoom, focusX, focusY } = cameraEngine.tick(dt);
 
-    // 2. Clear canvas & Render Studio Mesh Background
+    // 2. Clear canvas & Render Studio Mesh Background or Image Wallpaper
     ctx.clearRect(0, 0, targetWidth, targetHeight);
-    drawStudioBackground(ctx, targetWidth, targetHeight, project.canvas.background.preset);
+    drawStudioBackground(ctx, targetWidth, targetHeight, project.canvas.background.preset, bgImage);
 
     // 3. Draw Window & Scaled Video with Proportional OpenScreen Constraint Math
     const isFrameless = project.canvas.frame.type === 'frameless';
@@ -275,7 +322,8 @@ export async function renderAndExportVideo(
         (project.cursor.scale || 1.4) * scaleFactor,
         project.cursor.style,
         isClicking,
-        project.cursor.clickEffect?.color || '#6366f1'
+        project.cursor.clickEffect?.color || '#6366f1',
+        cursorImg
       );
     }
 
@@ -325,8 +373,14 @@ function drawStudioBackground(
   ctx: CanvasRenderingContext2D,
   w: number,
   h: number,
-  preset: string
+  preset: string,
+  bgImage: HTMLImageElement | null = null
 ) {
+  if (bgImage && bgImage.complete && bgImage.naturalWidth > 0) {
+    ctx.drawImage(bgImage, 0, 0, w, h);
+    return;
+  }
+
   const grad = ctx.createRadialGradient(
     w * 0.3,
     h * 0.2,
@@ -461,7 +515,8 @@ function drawVectorCursor(
   scale: number,
   style: StudioProject['cursor']['style'] = 'macos_arrow',
   isClicking: boolean = false,
-  haloColor: string = '#6366f1'
+  haloColor: string = '#6366f1',
+  cursorImg: HTMLImageElement | null = null
 ) {
   ctx.save();
   ctx.translate(x, y);
@@ -477,6 +532,13 @@ function drawVectorCursor(
     ctx.fill();
     ctx.stroke();
     ctx.restore();
+  }
+
+  if (cursorImg && cursorImg.complete && cursorImg.naturalWidth > 0) {
+    const iconSize = 28 * scale;
+    ctx.drawImage(cursorImg, 0, 0, iconSize, iconSize);
+    ctx.restore();
+    return;
   }
 
   ctx.scale(scale, scale);

@@ -4,6 +4,7 @@ import { NumberSlider } from '../common/NumberSlider';
 import { SegmentedControl } from '../common/SegmentedControl';
 import { FrameType, AspectRatio } from '../../types/project';
 import { AppWindow, Layers, Palette, Upload, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { OPENSCREEN_WALLPAPERS } from '../../config/wallpaperThemes';
 
 export function CanvasCard() {
   const {
@@ -28,12 +29,6 @@ export function CanvasCard() {
     { id: 'midnight_velvet', name: 'Midnight', color: 'from-blue-900 via-indigo-950 to-black' },
     { id: 'cosmic_nebula', name: 'Nebula', color: 'from-pink-600 via-indigo-600 to-slate-900' },
     { id: 'emerald_isle', name: 'Emerald', color: 'from-emerald-800 via-teal-900 to-zinc-950' },
-  ];
-
-  const wallpaperPresets = [
-    { id: 'cupertino_grid', name: 'Cupertino Grid', color: 'from-zinc-800 via-zinc-900 to-black' },
-    { id: 'sonoma_waves', name: 'Sonoma Waves', color: 'from-orange-500 via-fuchsia-600 to-indigo-900' },
-    { id: 'sequoia_mist', name: 'Sequoia Mist', color: 'from-sky-500 via-blue-700 to-slate-900' },
   ];
 
   return (
@@ -190,32 +185,73 @@ export function CanvasCard() {
         </div>
 
         {/* Preset Grid */}
-        <div className="grid grid-cols-2 gap-2">
-          {(bgCategory === 'gradients' ? gradientPresets : wallpaperPresets).map((preset) => {
-            const isSelected =
-              canvas.background.type === 'mesh_gradient' &&
-              canvas.background.preset === preset.id;
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => setBackgroundPreset(preset.id, [])}
-                className={`p-2 rounded-xl border flex items-center gap-2 transition-all cursor-pointer ${
-                  isSelected
-                    ? 'border-indigo-500/80 bg-indigo-500/15 shadow-[0_0_12px_rgba(99,102,241,0.25)]'
-                    : 'border-white/[0.06] bg-white/[0.03] hover:bg-white/[0.06]'
-                }`}
-              >
-                <div
-                  className={`w-4 h-4 rounded-full bg-gradient-to-tr ${preset.color} border border-white/20 shadow-sm shrink-0`}
-                />
-                <span className="text-[11px] font-medium text-zinc-300 truncate">
-                  {preset.name}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        {bgCategory === 'gradients' ? (
+          <div className="grid grid-cols-2 gap-2">
+            {gradientPresets.map((preset) => {
+              const isSelected =
+                canvas.background.type === 'mesh_gradient' &&
+                canvas.background.preset === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setBackgroundPreset(preset.id, [])}
+                  className={`p-2 rounded-xl border flex items-center gap-2 transition-all cursor-pointer ${
+                    isSelected
+                      ? 'border-indigo-500/80 bg-indigo-500/15 shadow-[0_0_12px_rgba(99,102,241,0.25)]'
+                      : 'border-white/[0.06] bg-white/[0.03] hover:bg-white/[0.06]'
+                  }`}
+                >
+                  <div
+                    className={`w-4 h-4 rounded-full bg-gradient-to-tr ${preset.color} border border-white/20 shadow-sm shrink-0`}
+                  />
+                  <span className="text-[11px] font-medium text-zinc-300 truncate">
+                    {preset.name}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-60 overflow-y-auto pr-1">
+            {OPENSCREEN_WALLPAPERS.map((wp) => {
+              const isSelected =
+                canvas.background.type === 'mesh_gradient' &&
+                canvas.background.preset === wp.id;
+              return (
+                <button
+                  key={wp.id}
+                  type="button"
+                  onClick={() => setBackgroundPreset(wp.id, [])}
+                  className={`group relative rounded-xl overflow-hidden border transition-all cursor-pointer flex flex-col items-center ${
+                    isSelected
+                      ? 'border-indigo-500 ring-2 ring-indigo-500/50 shadow-[0_0_12px_rgba(99,102,241,0.3)]'
+                      : 'border-white/[0.08] hover:border-white/20 hover:scale-[1.02]'
+                  }`}
+                >
+                  <div className="relative w-full aspect-video bg-zinc-900 overflow-hidden">
+                    <img
+                      src={wp.thumb}
+                      alt={wp.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                    />
+                    {isSelected && (
+                      <div className="absolute inset-0 bg-indigo-600/20 flex items-center justify-center">
+                        <div className="w-2 h-2 rounded-full bg-white shadow" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="w-full px-1.5 py-1 bg-black/60 backdrop-blur-sm text-center">
+                    <span className="text-[10px] font-medium text-zinc-300 truncate block">
+                      {wp.name}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Custom Image Upload Button */}
         <div className="pt-1">

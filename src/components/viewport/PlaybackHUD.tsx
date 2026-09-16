@@ -1,10 +1,11 @@
+import React, { useEffect, useState } from 'react';
 import {
   Play,
   Pause,
   SkipBack,
   SkipForward,
   Maximize2,
-  Sparkles,
+  Minimize2,
 } from 'lucide-react';
 import { useStudioStore } from '../../store/useStudioStore';
 
@@ -17,9 +18,35 @@ export function PlaybackHUD() {
     seek,
     playbackRate,
     setPlaybackRate,
-    viewportScale,
-    setViewportScale,
   } = useStudioStore();
+
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () =>
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      const viewportContainer =
+        document.getElementById('canvas-viewport-container') ||
+        document.documentElement;
+      if (viewportContainer.requestFullscreen) {
+        viewportContainer.requestFullscreen().catch((err) => {
+          console.warn('Error attempting to enable full-screen mode:', err);
+        });
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+  };
 
   const formatTimecode = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -90,14 +117,18 @@ export function PlaybackHUD() {
         {playbackRate}x
       </button>
 
-      {/* Scale / Fit Toggle */}
+      {/* Real Fullscreen Viewport Mode Toggle */}
       <button
         type="button"
-        onClick={() => setViewportScale(viewportScale === 1.0 ? 0.75 : 1.0)}
-        title="Toggle Zoom Viewport"
+        onClick={toggleFullscreen}
+        title={isFullscreen ? 'Exit Full Screen (ESC)' : 'Full Screen Preview (F)'}
         className="text-zinc-400 hover:text-white transition-colors cursor-pointer p-1 rounded-lg hover:bg-white/[0.06]"
       >
-        <Maximize2 className="w-3.5 h-3.5" />
+        {isFullscreen ? (
+          <Minimize2 className="w-3.5 h-3.5 text-indigo-400" />
+        ) : (
+          <Maximize2 className="w-3.5 h-3.5" />
+        )}
       </button>
     </div>
   );
